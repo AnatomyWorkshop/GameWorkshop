@@ -1,24 +1,119 @@
 @import "tailwindcss";
 
+/* ── GW 全局 CSS 变量（默认主题）── */
 :root {
-  --color-bg: #0f0f0f;
-  --color-surface: #1a1a1a;
-  --color-border: #2a2a2a;
-  --color-text: #e8e8e8;
-  --color-text-muted: #888;
-  --color-accent: #7c6af7;
+  /* 基础色 */
+  --color-bg:           #0f0f0f;
+  --color-surface:      #1a1a1a;
+  --color-border:       #2a2a2a;
+  --color-text:         #e8e8e8;
+  --color-text-muted:   #888;
+  --color-accent:       #7c6af7;
   --color-accent-hover: #9585ff;
+
+  /* 消息渲染 */
+  --color-user-bubble:  var(--color-accent);
+  --color-ai-bubble:    var(--color-surface);
+  --color-user-text:    var(--color-accent);
+  --color-user-border:  var(--color-accent);
+
+  /* 布局组件 */
+  --color-topbar-bg:    rgba(15, 15, 15, 0.88);
+  --color-input-bg:     var(--color-surface);
+
+  /* 排版 */
+  --font-prose:         system-ui, -apple-system, sans-serif;
+  --bubble-radius:      0.75rem;
+  --prose-line-height:  1.8;
 }
 
 body {
   background: var(--color-bg);
   color: var(--color-text);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-prose);
 }
 
-/* Game-injected theme overrides — applied at play page root */
-.gw-theme {
-  background: var(--theme-bg, var(--color-bg));
-  color: var(--theme-text, var(--color-text));
-  --color-accent: var(--theme-accent, #7c6af7);
+/* ── 主题预设（data-gw-theme 属性切换）── */
+
+[data-gw-theme="default-dark"] {
+  --color-bg:           #0f172a;
+  --color-surface:      #1e293b;
+  --color-border:       #334155;
+  --color-text:         #f1f5f9;
+  --color-text-muted:   #94a3b8;
+  --color-accent:       #3b82f6;
+  --color-accent-hover: #60a5fa;
+  --color-user-bubble:  #1d4ed8;
+  --color-ai-bubble:    #1e293b;
+  --color-user-text:    #3b82f6;
+  --color-user-border:  #3b82f6;
+  --color-topbar-bg:    rgba(15, 23, 42, 0.88);
+  --color-input-bg:     #1e293b;
+  --font-prose:         'Inter', system-ui, sans-serif;
+  --bubble-radius:      0.75rem;
+  --prose-line-height:  1.8;
+}
+
+[data-gw-theme="gothic"] {
+  --color-bg:           #0a0a0a;
+  --color-surface:      #171717;
+  --color-border:       #2a2a2a;
+  --color-text:         #e5e5e5;
+  --color-text-muted:   #737373;
+  --color-accent:       #d97706;
+  --color-accent-hover: #f59e0b;
+  --color-user-bubble:  #78350f;
+  --color-ai-bubble:    #1c1917;
+  --color-user-text:    #d97706;
+  --color-user-border:  #d97706;
+  --color-topbar-bg:    rgba(10, 10, 10, 0.92);
+  --color-input-bg:     #171717;
+  --font-prose:         'Crimson Text', 'Georgia', serif;
+  --bubble-radius:      4px;
+  --prose-line-height:  1.9;
+}
+
+[data-gw-theme="soft-fantasy"] {
+  --color-bg:           #1e1b4b;
+  --color-surface:      #312e81;
+  --color-border:       #4338ca;
+  --color-text:         #f5f3ff;
+  --color-text-muted:   #a5b4fc;
+  --color-accent:       #e879f9;
+  --color-accent-hover: #f0abfc;
+  --color-user-bubble:  #7c3aed;
+  --color-ai-bubble:    #3730a3;
+  --color-user-text:    #e879f9;
+  --color-user-border:  #e879f9;
+  --color-topbar-bg:    rgba(30, 27, 75, 0.88);
+  --color-input-bg:     #312e81;
+  --font-prose:         'Quicksand', 'Nunito', system-ui, sans-serif;
+  --bubble-radius:      1.25rem;
+  --prose-line-height:  1.85;
+}
+
+/* ── 工具类 ── */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.safe-bottom {
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+
+/* ── first_mes 沉浸式渐入 ── */
+.gw-first-mes {
+  animation: gw-fade-in 0.8s ease-out both;
+}
+.gw-first-mes > p:first-child {
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,1) 40%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,1) 40%);
+}
+
+@keyframes gw-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

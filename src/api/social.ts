@@ -1,6 +1,10 @@
 import { apiFetch } from './client'
 import type { Comment, GameStats } from './types'
 
+export interface CommentWithReplies extends Comment {
+  replies: Comment[]
+}
+
 export const socialApi = {
   react: (targetType: 'game' | 'comment' | 'forum_post' | 'forum_reply', targetId: string, reactionType: 'like' | 'favorite') =>
     apiFetch<void>(`/social/reactions/${targetType}/${targetId}/${reactionType}`, { method: 'POST' }),
@@ -8,9 +12,10 @@ export const socialApi = {
     apiFetch<void>(`/social/reactions/${targetType}/${targetId}/${reactionType}`, { method: 'DELETE' }),
   getStats: (gameId: string) =>
     apiFetch<GameStats>(`/social/games/${gameId}/stats`),
-  getComments: (gameId: string, cursor?: string) => {
-    const q = new URLSearchParams({ sort: 'date_desc', limit: '20' })
-    if (cursor) q.set('cursor', cursor)
-    return apiFetch<{ comments: Comment[]; next_cursor: string | null }>(`/social/games/${gameId}/comments?${q}`)
+  getComments: (gameId: string, offset = 0) => {
+    const q = new URLSearchParams({ sort: 'date_desc', limit: '20', offset: String(offset) })
+    return apiFetch<{ total: number; items: CommentWithReplies[] }>(`/social/games/${gameId}/comments?${q}`)
   },
+  getMyReactions: (targetType: string, targetId: string) =>
+    apiFetch<{ like: boolean; favorite: boolean }>(`/social/reactions/mine/${targetType}/${targetId}`),
 }

@@ -13,17 +13,40 @@ export interface Game {
   like_count: number
   favorite_count: number
   ui_config: UIConfig | null
+  tags?: string[]
+  comment_config?: { default_mode: 'linear' | 'threaded' }
   created_at: string
 }
 
+export type CatalogEntry = Game
+
 export interface UIConfig {
-  theme?: string
-  color_scheme?: { bg?: string; text?: string; accent?: string }
+  theme?: 'default-dark' | 'gothic' | 'soft-fantasy'
+  message_style?: 'prose' | 'bubble'
+  stats_bar?: {
+    items?: Array<{ key: string; icon?: string; label?: string }>
+  }
+  color_scheme?: {
+    bg?: string
+    surface?: string
+    border?: string
+    text?: string
+    text_muted?: string
+    accent?: string
+    user_text?: string
+    user_border?: string
+    topbar_bg?: string
+  }
   font?: string
   bubble_style?: string
   input_mode?: 'free' | 'choice_primary' | 'choice_only' | 'command'
+  input_placeholder?: string
   avatar_mode?: 'none' | 'script'
   characters?: Record<string, { avatar_url: string; color?: string }>
+  bg_url?: string
+  bg_overlay?: number
+  bg_blur?: boolean
+  display_vars?: string[]
 }
 
 export interface GameListResponse {
@@ -102,6 +125,9 @@ export interface WorldbookEntry {
   keys: string[]
   content: string
   comment: string
+  constant?: boolean
+  player_visible?: boolean
+  display_category?: string
 }
 
 export interface GameStats {
@@ -112,4 +138,20 @@ export interface GameStats {
 export interface ApiResponse<T> {
   code: number
   data: T
+}
+
+export interface LibraryEntry {
+  id: string
+  user_id: string
+  game_id: string
+  series_key: string
+  source: 'catalog' | 'local'
+  last_played_at: string | null
+  created_at: string
+}
+
+export interface RuntimeBinding {
+  engine_mode: 'cloud_default' | 'local_engine'
+  model_label: string
+  base_url?: string
 }

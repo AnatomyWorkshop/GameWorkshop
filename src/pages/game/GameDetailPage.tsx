@@ -26,7 +26,6 @@ export default function GameDetailPage() {
       <ActionBar game={game} sessions={sessions} />
       <StatsBar game={game} stats={stats} />
 
-      {/* TabNav */}
       <div className="flex border-b border-[var(--color-border)] mb-4">
         {(['overview', 'comments'] as Tab[]).map(t => (
           <button
@@ -44,7 +43,9 @@ export default function GameDetailPage() {
           {game.notes || game.short_desc || '暂无介绍'}
         </div>
       )}
-      {tab === 'comments' && <CommentCore gameId={game.id} />}
+      {tab === 'comments' && (
+        <CommentCore gameId={game.id} mode={game.comment_config?.default_mode ?? 'linear'} />
+      )}
     </div>
   )
 }

@@ -2,6 +2,12 @@ import { fetchEventSource } from '@microsoft/fetch-event-source'
 import type { TurnResponse } from './types'
 import { apiFetch } from './client'
 
+export interface StreamOptions {
+  api_key?: string
+  base_url?: string
+  model?: string
+}
+
 export function streamTurn(
   sessionId: string,
   message: string,
@@ -9,8 +15,12 @@ export function streamTurn(
   onDone: (turn: TurnResponse) => void,
   onError: (err: Error) => void,
   signal?: AbortSignal,
+  opts?: StreamOptions,
 ) {
   const params = new URLSearchParams({ input: message })
+  if (opts?.api_key) params.set('api_key', opts.api_key)
+  if (opts?.base_url) params.set('base_url', opts.base_url)
+  if (opts?.model) params.set('model', opts.model)
   let metaReceived = false
   fetchEventSource(`/api/play/sessions/${sessionId}/stream?${params}`, {
     method: 'GET',

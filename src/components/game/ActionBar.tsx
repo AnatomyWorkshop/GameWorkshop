@@ -1,62 +1,49 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useCreateSession } from '@/queries/sessions'
 import { socialApi } from '@/api/social'
-import { gamesApi } from '@/api/games'
 import type { Game, Session } from '@/api/types'
 
-interface Props { game: Game; sessions: Session[] }
+const LIB_KEY = 'gw_library'
 
-function slugPrefix(slug: string) {
-  return slug.replace(/-v\d+$/, '').replace(/-(beta|choice|free|command)$/, '')
+function addToLibrary(game: Game) {
+  try {
+    const items: unknown[] = JSON.parse(localStorage.getItem(LIB_KEY) ?? '[]')
+    if (items.some((i: unknown) => (i as { game: Game }).game.id === game.id)) return
+    items.unshift({ game, source: 'catalog', importedAt: new Date().toISOString() })
+    localStorage.setItem(LIB_KEY, JSON.stringify(items))
+  } catch { /* ignore */ }
 }
+
+interface Props { game: Game; sessions: Session[] }
 
 export default function ActionBar({ game, sessions }: Props) {
   const nav = useNavigate()
   const create = useCreateSession()
   const latest = sessions[0]
-  const [showPopover, setShowPopover] = useState(false)
-  const [favorited, setFavorited] = useState(false)
-  const [favCount, setFavCount] = useState(game.favorite_count)
-  const [likeCount, setLikeCount] = useState(game.like_count)
-  const [liked, setLiked] = useState(false)
-  const popoverRef = useRef<HTMLDivElement>(null)
 
-  const isText = game.type === 'text'
-  const prefix = slugPrefix(game.slug)
-
-  const { data: allGamesData } = useQuery({
-    queryKey: ['games', 'version-list', prefix],
-    queryFn: () => gamesApi.list({ limit: 50 }),
-    enabled: showPopover && isText,
+  const { data: myReactions } = useQuery({
+    queryKey: ['reactions', 'mine', 'game', game.id],
+    queryFn: () => socialApi.getMyReactions('game', game.id),
   })
 
-  const versions = allGamesData?.games.filter(g => slugPrefix(g.slug) === prefix) ?? []
+  const [liked, setLiked] = useState(false)
+  const [favorited, setFavorited] = useState(false)
+  const [likeCount, setLikeCount] = useState(game.like_count)
+  const [favCount, setFavCount] = useState(game.favorite_count)
 
   useEffect(() => {
-    if (!showPopover) return
-    function handler(e: MouseEvent) {
-      if (!popoverRef.current?.contains(e.target as Node)) setShowPopover(false)
+    if (myReactions) {
+      setLiked(myReactions.like)
+      setFavorited(myReactions.favorite)
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [showPopover])
+  }, [myReactions])
 
-  async function handleImport(target: Game) {
-    setShowPopover(false)
-    const result = await create.mutateAsync({ gameId: target.id })
+  async function handleStart() {
+    const result = await create.mutateAsync({ gameId: game.id })
+    addToLibrary(game)
     nav(`/play/${result.session_id}`)
-  }
-
-  async function handleImportClick() {
-    if (!isText) {
-      const result = await create.mutateAsync({ gameId: game.id })
-      nav(`/play/${result.session_id}`)
-      return
-    }
-    // For text games: check versions first (optimistic: show popover, direct import if only one)
-    setShowPopover(true)
   }
 
   async function handleLike() {
@@ -85,9 +72,10 @@ export default function ActionBar({ game, sessions }: Props) {
     }
   }
 
+  const hasSession = sessions.length > 0
+
   return (
     <div className="flex items-center gap-3 mb-4">
-      {/* 左侧：点赞 + 投币(disabled) + 收藏 */}
       <div className="flex items-center gap-3 flex-1">
         <button
           className={`flex items-center gap-1 text-sm transition-colors ${liked ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
@@ -95,11 +83,7 @@ export default function ActionBar({ game, sessions }: Props) {
         >
           👍 <span>{likeCount}</span>
         </button>
-        <button
-          className="flex items-center gap-1 text-sm text-[var(--color-text-muted)] opacity-40 cursor-not-allowed"
-          disabled
-          title="暂未开放"
-        >
+        <button className="flex items-center gap-1 text-sm text-[var(--color-text-muted)] opacity-40 cursor-not-allowed" disabled title="暂未开放">
           🪙
         </button>
         <button
@@ -110,9 +94,8 @@ export default function ActionBar({ game, sessions }: Props) {
         </button>
       </div>
 
-      {/* 右侧：继续 + 导入/开始游玩 */}
-      <div className="flex items-center gap-2 relative" ref={popoverRef}>
-        {latest && (
+      <div className="flex items-center gap-2">
+        {hasSession && (
           <button
             className="px-3 py-2 rounded-lg border border-[var(--color-border)] text-sm"
             onClick={() => nav(`/play/${latest.id}`)}
@@ -122,30 +105,11 @@ export default function ActionBar({ game, sessions }: Props) {
         )}
         <button
           className="px-4 py-2 rounded-lg bg-[var(--color-accent)] text-white font-semibold text-sm disabled:opacity-50"
-          onClick={handleImportClick}
+          onClick={handleStart}
           disabled={create.isPending}
         >
-          {create.isPending ? '创建中…' : isText ? '⬇ 导入' : '▶ 开始游玩'}
+          {create.isPending ? '创建中…' : hasSession ? '＋ 新存档' : '▶ 开始游玩'}
         </button>
-
-        {/* 版本选择弹窗（仅 text 游戏） */}
-        {showPopover && isText && (
-          <div className="absolute bottom-full right-0 mb-2 w-56 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-xl z-10">
-            <p className="text-xs text-[var(--color-text-muted)] mb-2 px-1">选择版本</p>
-            {versions.length === 0 && (
-              <p className="text-xs text-[var(--color-text-muted)] px-1 py-1">加载中…</p>
-            )}
-            {versions.map(v => (
-              <button
-                key={v.id}
-                onClick={() => handleImport(v)}
-                className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-[var(--color-accent)]/10 truncate"
-              >
-                {v.slug}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   )

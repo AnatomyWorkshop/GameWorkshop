@@ -14,12 +14,17 @@ export function useGameStats(gameId: string) {
   })
 }
 
+const COMMENT_PAGE = 20
+
 export function useComments(gameId: string) {
   return useInfiniteQuery({
     queryKey: socialKeys.comments(gameId),
-    queryFn: ({ pageParam }) => socialApi.getComments(gameId, pageParam as string | undefined),
-    getNextPageParam: (last) => last.next_cursor ?? undefined,
-    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam = 0 }) => socialApi.getComments(gameId, pageParam as number),
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.length * COMMENT_PAGE
+      return loaded < last.total ? loaded : undefined
+    },
+    initialPageParam: 0,
     enabled: !!gameId,
   })
 }
