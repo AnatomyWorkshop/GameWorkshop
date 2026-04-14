@@ -1,0 +1,246 @@
+# 打造永久稳定的前端设计：AI 输出键值对与 UI 枚举
+
+先给你一个**最关键结论**，直接定调你整个架构：
+
+**不需要做复杂的前端宏注册表，也不要用正则解析复杂语法。
+
+只要用「结构化键值对 + 前端内置渲染风格」，就能保证这部分后续几乎不改、不乱、不重构。**
+
+我按你的真实场景，把**为什么不用宏、怎么设计才能永久稳定**讲透，然后给你一套**可直接写进代码、未来不返工**的方案。
+
+---
+
+# 一、先回答你最核心的两个问题
+
+## 1. 需要做「前端宏注册表」吗？
+
+**完全不需要，而且千万不要做。**
+
+你现在的设计目标是：
+
+- 顶部/悬浮数据面板 **只展示，不交互**
+
+- 风格由作者在 `ui_config` 里选
+
+- 内容由 AI 输出简单数据
+
+一旦你做**宏注册表 + 正则匹配 + 动态语法解析**：
+
+- 作者要学语法
+
+- 你要维护语法版本
+
+- 后期加样式必须改解析器
+
+- 容易出现解析 bug、渲染异常、兼容问题
+
+- 架构越跑越重
+
+**这违背了你“自由、轻量、稳定”的初衷。**
+
+## 2. 如何保证这部分后续不改变？
+
+满足三条铁律即可：
+
+1. **AI 只输出结构化数据（key:value），不输出样式/语法**
+
+2. **前端只提供固定几套风格（枚举），不支持自定义 CSS/布局**
+
+3. **作者只配置位置、风格、开关，不写渲染逻辑**
+
+数据归数据，UI 归 UI，解析归解析，三者彻底分离。
+
+这是前端能“万年不变”的唯一路径。
+
+---
+
+# 二、我给你一套「未来不会变」的最终设计
+
+## 核心结构（极简、稳定）
+
+```Plain Text
+
+AI 输出 → 纯数据块 {STATS}...{/STATS}
+      ↓（只做提取，不做解析）
+全局状态 stats: Record<string, string | number>
+      ↓
+作者配置 ui_config.stats_panel
+      ↓
+前端内置 N 种渲染风格（labels / bars / card / text）
+```
+
+### 1. AI 输出格式（永远不变）
+
+```Plain Text
+
+{STATS}
+hp: 92
+gold: 1240
+san: 77
+scene: 古老图书馆
+day: 第 3 天
+{/STATS}
+```
+
+**规则永远只有一条：
+
+键:值 分行，或用 | 分隔。**
+
+不嵌套、不循环、不表达式、不函数。
+
+### 2. 前端提取逻辑（永远不变）
+
+只做一件事：
+
+把行按 `\n` 或 `|` 拆分
+
+把每一行按 `:` 或 `：` 拆成 key-value
+
+存入 `stats: Record<string, string | number>`
+
+**这段代码写一次，这辈子不用改。**
+
+### 3. 作者配置（永远不变）
+
+```TypeScript
+
+// ui_config 类型固定不动
+stats_panel: {
+  position: 'top' | 'bottom' | 'floatRight' | 'center'
+  style:    'labels' | 'bars' | 'card' | 'text' | 'minimal'
+  show:      boolean
+  order?:    string[]  // 控制显示顺序
+  hide?:     string[]  // 隐藏某些字段
+}
+```
+
+作者**不能写布局，不能写样式，不能写循环**。
+
+只能选模式。
+
+### 4. 前端渲染（永远不变）
+
+前端内置 5～6 套风格组件：
+
+- `StatsLabels`（横向标签）
+
+- `StatsBars`（进度条）
+
+- `StatsCard`（角色卡片）
+
+- `StatsText`（纯文本段落）
+
+- `StatsMinimal`（极简小字）
+
+**风格是封闭枚举，后期只增不改，不影响旧逻辑。**
+
+---
+
+# 三、为什么这样设计**永远不会变**？
+
+- 不解析复杂语法 → 不会因为语法扩展改前端
+
+- 不支持自定义样式 → 不会出现样式兼容问题
+
+- 数据结构永远是 key-value → 存储结构不变
+
+- 渲染风格是封闭集合 → 扩展只加新组件，不动旧代码
+
+- 作者不写逻辑 → 不会出现奇形怪状的需求倒逼你重构
+
+你现在担心的“后期多样性不够”：
+
+**完全足够。99% 的文字游戏只需要数值、状态、场景、进度条。**
+
+真不够，你就**加一种新 style**，老风格完全不动。
+
+---
+
+# 四、你现在要为第三条（F9-C 主题 + 数据面板）准备什么？
+
+只需要准备 4 个东西，**一次写完，永久不动**：
+
+## 1. 一个固定的提取函数
+
+```TypeScript
+
+function parseStatsBlock(text: string): Record<string, string> {
+  const match = text.match(/\{STATS\}([\s\S]*?)\{\/STATS\}/i);
+  if (!match) return {};
+
+  const lines = match[1].split(/\n|\|/).map(l => l.trim());
+  const stats: Record<string, string> = {};
+
+  for (const line of lines) {
+    const [k, ...v] = line.split(/[:：]/);
+    if (!k) continue;
+    stats[k.trim()] = v.join(':').trim();
+  }
+  return stats;
+}
+```
+
+**这个函数写完就永远不动。**
+
+## 2. 一个固定的全局状态
+
+```TypeScript
+
+// 全局 store / context
+const [stats, setStats] = useState<Record<string, string>>({});
+```
+
+## 3. 一个固定的 TS 类型（ui_config）
+
+```TypeScript
+
+interface StatsPanelConfig {
+  position?: 'top' | 'bottom' | 'floatRight' | 'center' | 'none';
+  style?:    'labels' | 'bars' | 'card' | 'text' | 'minimal';
+  order?:    string[];
+  enabled?:  boolean;
+}
+```
+
+## 4. 一个固定的渲染入口
+
+```TypeScript
+
+function StatsPanel({ stats, config }: {
+  stats: Record<string, string>
+  config: StatsPanelConfig
+}) {
+  switch (config.style) {
+    case 'labels': return <StatsLabels {...} />
+    case 'bars':   return <StatsBars {...} />
+    case 'card':   return <StatsCard {...} />
+    case 'text':   return <StatsText {...} />
+    default:       return null
+  }
+}
+```
+
+---
+
+# 五、最终一句话保证稳定
+
+**数据用最简单的键值对，UI 用封闭枚举风格，不做宏，不做注册表，不做动态解析。
+
+这样设计，这一块代码从今天写到上线，一辈子不需要重构。**
+
+---
+
+如果你愿意，我可以直接一次性给你：
+
+- 完整类型定义
+
+- parse 函数
+
+- 5 套风格组件（React + Tailwind）
+
+- 悬浮/定位/毛玻璃样式
+
+- 无游戏时的默认面板
+
+你拿到就能直接接入第三条，**后期真的不用改**。
+> （注：文档部分内容可能由 AI 生成）

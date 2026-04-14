@@ -4,7 +4,7 @@ import AppLayout from '@/components/layout/AppLayout'
 
 const PublicLibrary = lazy(() => import('@/pages/public-library/PublicLibraryPage'))
 const GameDetail = lazy(() => import('@/pages/game/GameDetailPage'))
-const TextSession = lazy(() => import('@/pages/play/TextSessionPage'))
+const TextSession = lazy(() => import('@/pages/play/text/TextPlayPage'))
 const MyLibrary = lazy(() => import('@/pages/my-library/MyLibraryPage'))
 
 export const router = createBrowserRouter([

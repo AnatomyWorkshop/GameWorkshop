@@ -8,6 +8,7 @@ interface Props {
   floors: Floor[]
   sessionId?: string
   messageStyle?: 'prose' | 'bubble'
+  componentSkin?: 'minimal-chrome' | 'glass-ornament'
   streamingBuffer: string | null
   header?: React.ReactNode
   lastOptions?: string[]
@@ -26,7 +27,7 @@ interface FlatMessage {
   isLastInFloor: boolean
 }
 
-export default function MessageList({ floors, sessionId, messageStyle = 'prose', streamingBuffer, header, lastOptions, onChoose, onFloorEdited, onFloorDeleted }: Props) {
+export default function MessageList({ floors, sessionId, messageStyle = 'prose', componentSkin = 'minimal-chrome', streamingBuffer, header, lastOptions, onChoose, onFloorEdited, onFloorDeleted }: Props) {
   const ref = useRef<VirtuosoHandle>(null)
 
   const messages: FlatMessage[] = []
@@ -74,7 +75,7 @@ export default function MessageList({ floors, sessionId, messageStyle = 'prose',
   return (
     <Virtuoso
       ref={ref}
-      className="flex-1"
+      className="h-full min-h-0 gw-chat-scroll"
       components={components}
       totalCount={totalItems}
       itemContent={(index) => {
@@ -82,6 +83,7 @@ export default function MessageList({ floors, sessionId, messageStyle = 'prose',
           const { key, msg, floorId, floorSeq, createdAt, globalIndex: gi, isLastInFloor } = messages[index]
           const isFirstMes = gi === 0 && msg.role === 'assistant'
           const isLast = index === messages.length - 1
+          const inlineChoices = isLast && isLastInFloor && streamingBuffer == null && lastOptions && lastOptions.length > 0 && onChoose ? lastOptions : undefined
 
           return (
             <div key={key}>
@@ -93,36 +95,17 @@ export default function MessageList({ floors, sessionId, messageStyle = 'prose',
                 sessionId={sessionId}
                 createdAt={createdAt}
                 turnNumber={gi}
+                componentSkin={componentSkin}
+                choices={inlineChoices}
+                onChoose={onChoose}
                 onEdited={onFloorEdited}
                 onDeleted={onFloorDeleted}
               />
-              {isLast && isLastInFloor && streamingBuffer == null && lastOptions && lastOptions.length > 0 && onChoose && (
-                <ChoiceButtonsInline choices={lastOptions} onChoose={onChoose} />
-              )}
-              {isLast && isLastInFloor && streamingBuffer == null && msg.role === 'assistant' && (
-                <div className="flex justify-end pr-4 pb-1 opacity-30 text-xs select-none">1/1</div>
-              )}
             </div>
           )
         }
         return <StreamingBubble content={streamingBuffer ?? ''} messageStyle={messageStyle} />
       }}
     />
-  )
-}
-
-function ChoiceButtonsInline({ choices, onChoose }: { choices: string[]; onChoose: (c: string) => void }) {
-  return (
-    <div className="flex flex-wrap gap-2 px-4 pb-3">
-      {choices.map((c) => (
-        <button
-          key={c}
-          className="rounded-full border border-[var(--color-accent)] text-[var(--color-accent)] px-3 py-1 text-sm hover:bg-[var(--color-accent)] hover:text-white transition-colors"
-          onClick={() => onChoose(c)}
-        >
-          {c}
-        </button>
-      ))}
-    </div>
   )
 }

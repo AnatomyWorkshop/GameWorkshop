@@ -20,7 +20,34 @@ export interface Game {
 
 export type CatalogEntry = Game
 
+export interface NarrativeTagItem {
+  id: string
+  source: 'token' | 'var'
+  token_type?: string
+  key?: string
+  icon?: string
+  style?: 'default' | 'gold' | 'muted' | 'info'
+}
+
+export interface FloatingPanelDecl {
+  id: string
+  type: 'preset'
+  preset: 'narrative_tags' | 'phone_status' | 'character_sheet' | 'telemetry_debug'
+  default_pinned?: boolean
+  position?: 'top_center_bar' | 'right_stack'
+  launcher: { icon: string; placement: 'topbar' }
+}
+
+export interface TokenExtractRule {
+  tag: string
+  style?: string
+  placement?: string[]
+}
+
 export interface UIConfig {
+  theme_preset?: 'default-dark' | 'gothic' | 'soft-fantasy'
+  layout_preset?: 'novel-column' | 'full-bleed' | 'chat-card'
+  component_skin?: 'minimal-chrome' | 'glass-ornament'
   theme?: 'default-dark' | 'gothic' | 'soft-fantasy'
   message_style?: 'prose' | 'bubble'
   stats_bar?: {
@@ -28,11 +55,13 @@ export interface UIConfig {
   }
   color_scheme?: {
     bg?: string
+    bg_image?: string
     surface?: string
     border?: string
     text?: string
     text_muted?: string
     accent?: string
+    quote?: string
     user_text?: string
     user_border?: string
     topbar_bg?: string
@@ -47,6 +76,10 @@ export interface UIConfig {
   bg_overlay?: number
   bg_blur?: boolean
   display_vars?: string[]
+  // 悬浮面板体系
+  narrative_tags?: { items: NarrativeTagItem[] }
+  floating_panels?: { panels: FloatingPanelDecl[] }
+  token_extract_rules?: TokenExtractRule[]
 }
 
 export interface GameListResponse {
@@ -90,6 +123,7 @@ export interface TurnResponse {
   floor_id: string
   narrative: string
   options: string[]
+  variables?: Record<string, unknown>
   state_patch: Record<string, unknown>
   vn: VNDirectives | null
 }
