@@ -1,5 +1,5 @@
 import { apiFetch } from './client'
-import type { Game, GameListResponse, WorldbookEntry } from './types'
+import type { Game, GameListResponse, MergedWorldbookEntry } from './types'
 
 export const gamesApi = {
   list: (params?: { type?: string; tags?: string; sort?: string; limit?: number; offset?: number }) => {
@@ -12,5 +12,30 @@ export const gamesApi = {
     return apiFetch<GameListResponse>(`/play/games?${q}`)
   },
   get: (slug: string) => apiFetch<Game>(`/play/games/${slug}`),
-  worldbook: (id: string) => apiFetch<WorldbookEntry[]>(`/play/games/worldbook/${id}`),
+  worldbook: (gameId: string, userId: string = 'anonymous') =>
+    apiFetch<MergedWorldbookEntry[]>(`/users/${userId}/library/${gameId}/worldbook`),
+  patchWorldbookEntry: (gameId: string, entryId: string, patch: { content?: string; enabled?: boolean; priority?: number }, userId: string = 'anonymous') =>
+    apiFetch<unknown>(`/users/${userId}/library/${gameId}/worldbook/${entryId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  createWorldbookEntry: (
+    gameId: string,
+    body: { content: string; keys?: string[]; enabled?: boolean; constant?: boolean; priority?: number },
+    userId: string = 'anonymous',
+  ) =>
+    apiFetch<unknown>(`/users/${userId}/library/${gameId}/worldbook`, {
+      method: 'POST',
+      body: JSON.stringify({
+        content: body.content,
+        keys: body.keys ?? [],
+        enabled: body.enabled,
+        constant: body.constant,
+        priority: body.priority,
+      }),
+    }),
+  deleteWorldbookEntry: (gameId: string, entryId: string, userId: string = 'anonymous') =>
+    apiFetch<unknown>(`/users/${userId}/library/${gameId}/worldbook/${entryId}`, { method: 'DELETE' }),
+  resetWorldbookOverrides: (gameId: string, userId: string = 'anonymous') =>
+    apiFetch<unknown>(`/users/${userId}/library/${gameId}/worldbook`, { method: 'DELETE' }),
 }

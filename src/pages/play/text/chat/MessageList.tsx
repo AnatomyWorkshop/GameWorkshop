@@ -1,6 +1,6 @@
 import { useRef, useEffect } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
-import type { Floor, FloorMessage } from '@/api/types'
+import type { Floor, FloorMessage, RegexProfileRef } from '@/api/types'
 import MessageBubble from './MessageBubble'
 import StreamingBubble from './StreamingBubble'
 
@@ -9,10 +9,17 @@ interface Props {
   sessionId?: string
   messageStyle?: 'prose' | 'bubble'
   componentSkin?: 'minimal-chrome' | 'glass-ornament'
+  characters?: Record<string, { avatar_url: string; color?: string }>
+  avatarMode?: 'none' | 'script'
+  choiceColumns?: number
+  optimisticUserMessage?: string | null
   streamingBuffer: string | null
   header?: React.ReactNode
   lastOptions?: string[]
+  /** 游戏包声明的正则替换表，透传给 MessageBubble */
+  regexProfiles?: RegexProfileRef[]
   onChoose?: (choice: string) => void
+  onForkFromFloor?: (floorId: string) => void
   onFloorEdited?: (floorId: string, newContent: string) => void
   onFloorDeleted?: (floorId: string) => void
 }
@@ -27,7 +34,7 @@ interface FlatMessage {
   isLastInFloor: boolean
 }
 
-export default function MessageList({ floors, sessionId, messageStyle = 'prose', componentSkin = 'minimal-chrome', streamingBuffer, header, lastOptions, onChoose, onFloorEdited, onFloorDeleted }: Props) {
+export default function MessageList({ floors, sessionId, messageStyle = 'prose', componentSkin = 'minimal-chrome', characters, avatarMode = 'none', choiceColumns, optimisticUserMessage, streamingBuffer, header, lastOptions, regexProfiles, onChoose, onForkFromFloor, onFloorEdited, onFloorDeleted }: Props) {
   const ref = useRef<VirtuosoHandle>(null)
 
   const messages: FlatMessage[] = []
@@ -47,11 +54,16 @@ export default function MessageList({ floors, sessionId, messageStyle = 'prose',
     }
   }
 
-  const totalItems = messages.length + (streamingBuffer != null ? 1 : 0)
+  const totalItems = messages.length + (optimisticUserMessage ? 1 : 0) + (streamingBuffer != null ? 1 : 0)
 
   useEffect(() => {
     ref.current?.scrollToIndex({ index: totalItems - 1, behavior: 'smooth' })
   }, [totalItems])
+
+  useEffect(() => {
+    if (streamingBuffer == null) return
+    ref.current?.scrollToIndex({ index: totalItems - 1, behavior: 'auto' })
+  }, [streamingBuffer, totalItems])
 
   const components = {
     Header: () => (
@@ -77,6 +89,7 @@ export default function MessageList({ floors, sessionId, messageStyle = 'prose',
       ref={ref}
       className="h-full min-h-0 gw-chat-scroll"
       components={components}
+      followOutput="smooth"
       totalCount={totalItems}
       itemContent={(index) => {
         if (index < messages.length) {
@@ -97,11 +110,34 @@ export default function MessageList({ floors, sessionId, messageStyle = 'prose',
                 turnNumber={gi}
                 componentSkin={componentSkin}
                 choices={inlineChoices}
+                regexProfiles={regexProfiles}
                 onChoose={onChoose}
+                onForkFromFloor={onForkFromFloor}
                 onEdited={onFloorEdited}
                 onDeleted={onFloorDeleted}
+                characters={characters}
+                avatarMode={avatarMode}
+                choiceColumns={choiceColumns}
               />
             </div>
+          )
+        }
+        const optimisticIndex = messages.length
+        if (optimisticUserMessage && index === optimisticIndex) {
+          return (
+            <MessageBubble
+              message={{ role: 'user', content: optimisticUserMessage }}
+              isFirstMes={false}
+              messageStyle={messageStyle}
+              floorId="optimistic"
+              sessionId={sessionId}
+              createdAt={new Date().toISOString()}
+              turnNumber={messages.length}
+              componentSkin={componentSkin}
+              characters={characters}
+              avatarMode={avatarMode}
+              choiceColumns={choiceColumns}
+            />
           )
         }
         return <StreamingBubble content={streamingBuffer ?? ''} messageStyle={messageStyle} />

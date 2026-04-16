@@ -4,7 +4,9 @@ import { sessionsApi } from '@/api/sessions'
 export const sessionKeys = {
   list: (gameId: string) => ['sessions', gameId] as const,
   detail: (id: string) => ['sessions', id] as const,
-  floors: (id: string) => ['sessions', id, 'floors'] as const,
+  floors: (id: string, branchId: string) => ['sessions', id, 'floors', branchId] as const,
+  promptPreview: (id: string) => ['sessions', id, 'prompt-preview'] as const,
+  branches: (id: string) => ['sessions', id, 'branches'] as const,
 }
 
 export function useSession(sessionId: string) {
@@ -23,11 +25,29 @@ export function useSessionList(gameId: string) {
   })
 }
 
-export function useFloors(sessionId: string) {
+export function useFloors(sessionId: string, branchId: string) {
   return useQuery({
-    queryKey: sessionKeys.floors(sessionId),
-    queryFn: () => sessionsApi.floors(sessionId),
+    queryKey: sessionKeys.floors(sessionId, branchId),
+    queryFn: () => sessionsApi.floors(sessionId, { branch_id: branchId }),
+    enabled: !!sessionId && !!branchId,
+  })
+}
+
+export function useBranches(sessionId: string) {
+  return useQuery({
+    queryKey: sessionKeys.branches(sessionId),
+    queryFn: () => sessionsApi.branches(sessionId),
     enabled: !!sessionId,
+    staleTime: 5_000,
+  })
+}
+
+export function usePromptPreview(sessionId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: sessionKeys.promptPreview(sessionId),
+    queryFn: () => sessionsApi.promptPreview(sessionId),
+    enabled: !!sessionId && enabled,
+    staleTime: 5_000,
   })
 }
 

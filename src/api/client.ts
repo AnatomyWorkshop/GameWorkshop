@@ -1,3 +1,5 @@
+import { newTraceId, useApiTraceStore } from '@/stores/apiTrace'
+
 const BASE = '/api'
 
 export class ApiError extends Error {
@@ -7,10 +9,24 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-    ...init,
-  })
+  const method = (init?.method ?? 'GET').toUpperCase()
+  const url = `${BASE}${path}`
+  const traceId = newTraceId()
+  const started = performance.now()
+  useApiTraceStore.getState().push({ id: traceId, ts: Date.now(), method, url })
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json', ...init?.headers },
+      ...init,
+    })
+  } catch (e) {
+    useApiTraceStore.getState().patch(traceId, { ok: false, error: e instanceof Error ? e.message : String(e), ms: Math.round(performance.now() - started) })
+    throw e
+  }
+
+  useApiTraceStore.getState().patch(traceId, { status: res.status, ok: res.ok, ms: Math.round(performance.now() - started) })
   let json: any = null
   try {
     json = await res.json()

@@ -353,7 +353,9 @@ TechStatsModal（弹出层，面向高级用户）
 
 > 按实施顺序排列。后端缺口单独列出，稍后交后端补充。
 
-### 第一批（阻塞内测，纯前端）✅ 全部完成（2026-04-12）
+### 第一批 ✅ 全部完成（2026-04-12）
+
+原第一批（阻塞内测）+ 原第二批已完成项合并。
 
 | # | 任务 | 文件 | 状态 |
 |---|---|---|---|
@@ -361,64 +363,79 @@ TechStatsModal（弹出层，面向高级用户）
 | F2 | **GameStatsPanel**：消息流顶部 inline overlay，读取 display_vars 渲染变量卡片 | `TextSessionPage.tsx` + `GameStatsPanel.tsx` | ✅ |
 | F3 | **TechStatsModal**：楼层数/模型/Memory Tab/Prompt 快照入口 | `TechStatsModal.tsx` | ✅ |
 | F4 | **停止生成保留内容**：`stopStream()` 保留 buffer 为 pendingMessage，floors 刷新后自动清除 | `stores/stream.ts` + `TextSessionPage.tsx` + `ChatInput.tsx` | ✅ |
+| F5 | **消息编辑**：用户消息 inline 编辑（Enter 确认/Escape 取消），调用 `PATCH /floors/:fid` | `MessageBubble.tsx` | ✅ |
+| F6 | **楼层删除**：`DELETE /floors/:fid`，refetch floors | `MessageBubble.tsx` | ✅ |
+| F7 | **记忆查看**：TechStatsModal Memory Tab，接入 `GET /sessions/:id/memories` | `TechStatsModal.tsx` | ✅ |
+| F10 | **消息复制按钮** + Toast 反馈 | `MessageBubble.tsx` | ✅ |
 
-**变更说明**：
-- `UIConfig` 新增 `bg_url` 和 `display_vars` 字段（`types.ts`）
+**累计变更说明**：
+- `UIConfig` 新增 `bg_url`、`display_vars`、`narrative_tags`、`floating_panels` 字段（`types.ts`）
 - `WorldbookEntry` 新增 `constant`、`player_visible`、`display_category` 字段（`types.ts`）
-- `sessionsApi` 新增 `memories(id)` 方法（`sessions.ts`）
+- `sessionsApi` 新增 `memories(id)`、`editFloor()`、`deleteFloor()` 方法（`sessions.ts`）
 - `useStreamStore` 新增 `stopStream()`、`pendingMessage`、`clearPending()`（`stores/stream.ts`）
-- `TextSessionTopBar` 的 📊 按钮改为触发 `onStatsToggle` 回调，不再打开侧边抽屉
+- `MessageBubble` 新增 `MetaLine` 元数据行（时间戳/序号/操作按钮），替换旧 hover ActionBar
+- Toast 系统（sonner）：复制反馈、SSE 错误、fork 确认全部迁移，删除旧 inline 实现
 
-### 第二批（核心体验）✅ F5/F6/F7 完成（2026-04-12）
+---
 
-| # | 任务 | 文件 | 状态 |
-|---|---|---|---|
-| F5 | **消息编辑**：用户消息 hover 显示操作栏，inline 编辑（Enter 确认/Escape 取消），调用 `PATCH /floors/:fid` | `MessageBubble.tsx` | ✅ |
-| F6 | **楼层删除**：hover 操作栏显示删除图标，confirm 后调用 `DELETE /floors/:fid`，refetch floors | `MessageBubble.tsx` | ✅ |
-| F7 | **记忆查看**：TechStatsModal Memory Tab，接入 `GET /sessions/:id/memories`，展示 type/fact_key/content/source_floor，过滤 deprecated | `TechStatsModal.tsx` | ✅ |
-| F9 | **背景图** | `TextSessionPage.tsx` | 🔜 待实现 |
-| F10 | **消息复制按钮** | `MessageBubble.tsx` | ✅（已随 F5/F6 一起实现）|
+### 第二批（待实现）
 
-**变更说明**：
-- `sessionsApi` 新增 `editFloor(sessionId, floorId, content)` 和 `deleteFloor(sessionId, floorId)`（`sessions.ts`）
-- `MessageBubble` 新增 hover 操作栏（复制/编辑/删除），inline 编辑态（`MessageBubble.tsx`）
-- `MessageList` 新增 `sessionId`、`onFloorEdited`、`onFloorDeleted` props（`MessageList.tsx`）
-- `TechStatsModal` Memory Tab 接入真实 Memory 数据，展示类型标签/fact_key/来源楼层（`TechStatsModal.tsx`）
-
-### 第三批（内测后）
+#### 渲染体系补全
 
 | # | 任务 | 文件 | 后端依赖 | 说明 |
 |---|---|---|---|---|
-| F8 | **角色识别 + 头像** | `MessageBubble.tsx` | ✅ 无 | 创作者声明式，`avatar_mode='script'` 时正则匹配角色名 → 显示头像 |
+| F9 | **背景图接入** | `TextPlayPage.tsx` | ✅ 无 | `ui_config.bg_url` → 背景层 + TopBar/ChatInput backdrop-blur；详见 RENDER-SPEC §5 |
+| F21 | **B 类内联标签 CSS 映射** | `globals.css` / `ProseComponents` | ✅ 无 | 新增 `gw-em-gold`（金色）、`gw-em-rep-up/down`（声望涨落）、`gw-em-stat-up/down`（能力值变化）class 样式；供维多利亚/绿茵好莱坞等卡使用 |
+| F22 | **StatsPanel 进度条扩展** | `panels/StatsPanel.tsx` | ✅ 无 | 当前只对 `label.includes('生命')` 渲染进度条；扩展为：`group === '核心能力'` 且值为 0–100 时自动渲染进度条（绿茵好莱坞球员能力值）|
+| F23 | **`html_panel` preset（iframe 沙箱）** | `panels/PanelsHost.tsx` + 新建 `HtmlPanelFrame.tsx` | ✅ 无 | 详见附录"美高之路 HTML 浮窗改造专项"；`done` 事件后提取 HTML 块，注入变量 JSON，`<iframe srcdoc>` 渲染；`FloatingPanelDecl` 新增 `preset: 'html_panel'` |
+| F24 | **`splitHtmlPanel()` 工具函数** | `utils/tokenExtract.ts` 或新文件 | ✅ 无 | 从消息内容中分离叙事文本和 HTML 块（正则匹配 `<!DOCTYPE html>[\s\S]*?<\/html>`）；叙事部分正常渲染，HTML 块不在气泡内显示 |
+
+#### WE 引擎能力接入
+
+| # | 任务 | 文件 | 后端依赖 | 说明 |
+|---|---|---|---|---|
+| F25 | **Phase SSE 阶段推送** | `api/sse.ts` + `TextPlayPage.tsx` | 🔜 P-4H | 后端新增 `phase` 事件（`preparing/director_running/generating/verifying`）；前端在 StreamingBubble 下方显示阶段提示文字，替代当前无差别的"生成中…" |
+| F26 | **Preflight 选项预测** | `TextPlayPage.tsx` + `ChatInput.tsx` | 🔜 P-4L | 后端 `PlayTurn` 完成后异步写入 `predicted_choices` 变量；前端轮询 `/variables` 或通过 SSE 接收，在 ChatInput 上方渲染预测选项行（淡入，用户自由输入时收起）|
+| F27 | **变量门控世界书可视化** | `WorldbookDrawer` | ✅ 已就绪 | 世界书词条已支持 `var:key=value` 门控；前端在词条展开态显示"触发条件"标签（如"当 温莎声望 ≥ 50 时激活"），让玩家理解词条何时生效 |
+| F28 | **记忆阶段标签展示** | `TechStatsModal` Memory Tab | ✅ 已就绪 | Memory 已支持 `stage_tags`；Memory Tab 展示每条记忆的 `stage_tags`，让玩家/创作者了解记忆在哪个游戏阶段注入 |
+
+#### 消息操作扩展（第三批，内测后）
+
+| # | 任务 | 文件 | 后端依赖 | 说明 |
+|---|---|---|---|---|
+| F8 | **角色识别 + 头像** | `MessageBubble.tsx` | ✅ 无 | `avatar_mode='script'` 时正则匹配角色名 → 显示头像 |
 | F11 | **Swipe 多页** | `MessageList.tsx` | 🔴 需后端 | 同一楼层多候选回复，左右滑动切换，计数器 `2/3` |
 | F12 | **世界书可编辑** | `TextSessionTopBar.tsx` | ✅ 已就绪 | 玩家私有副本编辑（A-20）|
 | F13 | **多 Provider 配置 UI** | `MyLibraryPage.tsx` | ✅ 已就绪 | Cherry Studio 风格，LLMProfile CRUD |
 | F14 | **输入历史**（↑ 键）| `ChatInput.tsx` | ✅ 无 | localStorage 存最近 N 条输入，↑/↓ 键切换 |
-| F15 | **variable_display 自定义样式** | `GameStatsPanel.tsx` | 🔴 需游戏包 | 创作者声明变量展示样式（进度条/数字/文本）|
-| F16 | **AI 消息编辑** | `MessageBubble.tsx` | 🔴 需后端 | 当前 PATCH 只允许 `role=user`，需后端扩展支持 `role=assistant` 编辑。前端元数据行已预留位置，后端就绪后加 `canEdit` 判断即可 |
-| F17 | **消息翻译** | `MessageBubble.tsx` | 🔴 需后端 | ··· 菜单内"翻译"按钮，调用翻译 API，结果显示在消息下方折叠区。ST 用 `.mes_translate` 按钮 + 扩展菜单实现 |
-| F18 | **消息朗读（TTS）** | `MessageBubble.tsx` | 🟡 可选后端 | ··· 菜单内"朗读"按钮，调用 Web Speech API 或后端 TTS。ST 用 `.mes_narrate` 按钮实现 |
-| F19 | **消息书签** | `MessageBubble.tsx` | 🔴 需后端 | ··· 菜单内"书签"按钮，标记重要消息，可在 TechStatsModal 或独立面板查看。ST 用 `.mes_bookmark` + checkpoint 机制实现 |
-| F20 | **消息分支** | `MessageList.tsx` | 🔴 需后端 | 从某条消息创建分支对话，ST 用 `.mes_create_branch` 实现 |
+| F16 | **AI 消息编辑** | `MessageBubble.tsx` | 🔴 需后端 | 后端扩展 PATCH 支持 `role=assistant`；前端 `canEdit` 判断已预留 |
+| F17 | **消息翻译** | `MessageBubble.tsx` | 🔴 需后端 | ··· 菜单内"翻译"，结果显示在消息下方折叠区 |
+| F18 | **消息朗读（TTS）** | `MessageBubble.tsx` | 🟡 可选 | Web Speech API 或后端 TTS |
+| F19 | **消息书签** | `MessageBubble.tsx` | 🔴 需后端 | 标记重要消息，TechStatsModal 可查 |
+| F20 | **消息分支** | `MessageList.tsx` | 🔴 需后端 | 从某条消息创建分支对话 |
 
-**F16-F20 实现说明**：
-
-这些功能共享同一个扩展点——元数据行的 `···` 更多菜单（`MoreMenu` 组件）。当前菜单只有"复制"和"删除"两项，后续每个功能只需在 `MoreMenu` 内新增一个菜单项 + 对应的处理逻辑。前端结构已就绪，不需要重构。
+F16–F20 共享 `MoreMenu` 扩展点，前端结构已就绪，不需要重构。
 
 ```
-当前 ··· 菜单：
-  ├─ 复制 ✅
-  └─ 删除 ✅
-
 目标 ··· 菜单（第三批完成后）：
-  ├─ 复制
-  ├─ 编辑（F16，AI 消息，需后端）
+  ├─ 复制 ✅
+  ├─ 编辑（F16，AI 消息）
   ├─ 翻译（F17）
   ├─ 朗读（F18）
   ├─ 书签（F19）
   ├─ 分支（F20）
-  └─ 删除
+  └─ 删除 ✅
 ```
+
+#### 关于五类标签和 HTML 的演进方向
+
+当前的五类标签体系（A 类块级 / B 类内联 / C 类状态 / D 类选项 / E 类系统）和 HTML 浮窗方案是**暂行设计**，在 VN 渲染组件完整实现后需要重新评估：
+
+- **A 类块级标签**（`<match-result>`、`<news-brief>`、`<sys-event>`）：当前用正则管线转换为 `gw-*` CSS 类渲染。VN 渲染器完成后，这些块级内容可以升级为独立的 React 组件（卡片/面板），而不只是 CSS 样式差异。迁移路径：正则规则不变，只改 replacement 输出的 HTML 结构。
+- **B 类内联标签**（`<em class="gold">` 等）：token 消耗偏高，中期可迁移到更短的参数化语法（`{g:文字}`），只需更新 `ALICE_CORE_RULES` 中的 pattern，组件层零改动。
+- **HTML 浮窗（`html_panel`）**：`<iframe srcdoc>` 是过渡方案，适合直接复用原卡 HTML。长期方向是创作者用 `phone_status` / `character_sheet` 等声明式 preset 替代手写 HTML，引擎负责渲染，创作者只声明数据结构。
+- **C 类状态标签**（`<UpdateState>`）：已由引擎 parser 提取并剥离，不出现在叙事文本中，这部分设计稳定，不需要改变。
+- **D 类选项标签**（`[choice|A|B]`）：VN 渲染器完成后，选项渲染会从当前的 `ChoiceButtonsInline` 升级为 VN 风格的选项覆盖层，标签格式本身不变。
 
 ---
 
@@ -862,3 +879,447 @@ ui_config: {
 | `LibraryEntry` 后端写操作需 JWT | 匿名用户用 localStorage 模拟 | Phase 4 登录后接后端 |
 | `author_name` 无 users 表 | 显示 UUID 前 8 位 | 永久缺口或 Phase 4+ |
 | 停止生成清空 buffer | 用户点停止后内容消失 | F4，第一批修复 |
+
+---
+
+## 八、B 类标签渲染规则的可扩展性分析
+
+### 现状与决策
+
+B 类标签（内联样式标签，保留在叙事文本中渲染）已迁移进 `ALICE_CORE_RULES`（order 10-14），与清洗规则串联在同一管线中执行。`preprocessNarrative()` 函数已移除。
+
+当前管线：
+```
+AI 原始输出 → runRegexPipeline('narrative') → splitSayBlocks() → ReactMarkdown
+```
+
+`runRegexPipeline` 内部规则分两组：
+
+| order | 分组 | 职责 |
+|---|---|---|
+| 1–9 | 清洗组 | 移除/剥离 AI 输出噪声（`<thinking>`、`<content>` 等） |
+| 10–19 | B 类渲染组 | 语义标签 → `gw-*` CSS 类名（`<em class="gold">`、`<aside>`、`<quote>`） |
+
+当前 B 类规则（5 条）：
+
+| 标签 | 渲染效果 | CSS 类 |
+|---|---|---|
+| `<em class="gold">` | 金色强调 | `gw-em-gold` |
+| `<em class="danger">` | 红色警告 | `gw-em-danger` |
+| `<em class="info">` | 蓝色提示 | `gw-em-info` |
+| `<aside>` | 旁白/心声 | `gw-aside` |
+| `<quote>` | 引用块 | `gw-quote` |
+
+### 为什么合并而不是保持独立
+
+- **可扩展性**：创作者现在可通过 `ui_config.regex_profiles` bundled 规则添加自定义内联标签，无需改动组件层
+- **安全边界**：alice 命名空间官方规则豁免"纯文本限制"，可输出白名单 HTML（`span`/`div` + `gw-*` className），经 `rehypeSanitize` + `GW_SANITIZE_SCHEMA` 过滤后安全渲染；创作者 bundled 规则仍只允许纯文本 replacement
+- **ST 对比**：ST 的正则脚本系统同样不区分"清洗"和"渲染转换"，所有文本变换走同一管线
+
+### 之后可以怎么做
+
+**近期（内测阶段）**：现状即可，创作者通过 bundled 规则扩展 B 类标签。
+
+**中期：参数化标记语法**
+
+当前 B 类标签语法（`<em class="gold">`）对 AI 来说 token 消耗偏高，且语义不够原子化。未来可设计更短的参数化语法，例如：
+
+```
+{g:金色文字}        → <span class="gw-em-gold">金色文字</span>
+{d:危险提示}        → <span class="gw-em-danger">危险提示</span>
+[[style|gold|文字]] → <span class="gw-em-gold">文字</span>
+```
+
+迁移路径：只需更新 `ALICE_CORE_RULES` 中对应规则的 `pattern`，组件层零改动。
+
+**长期：专用解析器替代正则**
+
+正则对嵌套标签（如 `{g:{d:嵌套}}` ）处理能力有限。如果 B 类标签语法复杂化，可在 `runRegexPipeline` 之后插入专用解析器步骤，正则管线仍处理简单替换，解析器处理结构化标记。
+
+---
+
+## 九、第三种元语言 vs 语义收敛：长对话格式稳定性方案评估
+
+### 问题本质
+
+AI 在长对话中会逐渐"遗忘"或"变异"输出格式规则。当宏语法（如 `[[say|角色名|台词]]`）以人类可读形式写在 system prompt 中时，模型可能：
+
+- 漏写闭合标记
+- 篡改分隔符（`|` → `:` 或 `,`）
+- 混入自然语言破坏结构
+- 长上下文后完全丢失格式
+
+### 方案 A：第三种元语言（零宽度字符编码）
+
+豆包文档提出的核心思路：将宏结构编码为 AI 不可感知的零宽度字符（U+200B / U+200C / U+200D），AI 只生成纯文本，宏由后端注入，前端解码渲染。
+
+**优势**：
+- 从根源杜绝 AI 破坏宏结构——AI 根本看不到宏
+- 宏结构与 AI 生成层完全物理隔离
+
+**GW 场景下的问题**：
+
+1. **say 宏的内容由 AI 生成**。`[[say|角色名|台词]]` 中，角色名和台词都是 AI 输出的一部分，不是后端能预注入的元数据。后端不知道 AI 这一轮会让哪个角色说话、说什么。零宽度编码方案假设"宏结构由后端维护，AI 只填充纯文本"，但 GW 的 say 宏恰恰是 AI 自主决定的叙事行为。
+2. **编码/解码复杂度高**。需要实现二进制编码器、CRC 校验、前端解码器，调试时不可见字符极难排查。
+3. **剪贴板/日志污染**。零宽度字符会被复制、粘贴、写入日志，造成隐性 bug。
+4. **部分平台不兼容**。某些编辑器、终端、数据库工具会过滤或显示零宽度字符。
+
+**适用场景**：宏结构完全由后端控制、AI 不参与宏生成的场景（如 Notion 的不可编辑区域、飞书评论锚点）。GW 的 say 宏不属于此类。
+
+### 方案 B：语义收敛到固定原子 ID
+
+当前 GW 的实际做法：通过 system prompt 中的 `preset_entries` 严格约束 AI 输出格式，配合前端正则管线做容错清洗。
+
+**为什么对 GW 有效**：
+
+1. **原子格式足够简单**。`[[say|角色名|台词]]` 只有一层嵌套、两个分隔符，远低于模型的格式保持阈值。对比豆包描述的复杂嵌套宏（`<option>{talk|李|李斯特|今天你吃了多少}</option>`），GW 的格式对模型友好得多。
+2. **角色名有锚定**。世界书中的角色名是高频重复 token，模型对其有强记忆。`preset_entries` 中给出的示例进一步强化格式锚定。
+3. **正则管线兜底**。即使 AI 偶尔输出变体（如 `[[say|角色名：台词]]` 漏了分隔符），`splitSayBlocks()` 可以做宽松匹配降级处理，不至于渲染崩溃。
+4. **优雅降级**。最坏情况下 say 宏未被识别，文本原样渲染为普通叙事段落——玩家看到的是纯文本对话而非报错，体验可接受。
+5. **调试透明**。所有内容人类可读，日志可查，问题可复现。
+
+**局限**：
+
+- 超长对话（50+ 轮）后格式漂移仍可能发生
+- 依赖模型能力——弱模型（如部分本地 7B）格式保持能力差
+
+### 结论
+
+**内测阶段及可预见的中期：语义收敛方案足够，不需要实现零宽度编码。**
+
+理由：
+- GW 的宏格式简单，现代模型（Claude / GPT-4 / DeepSeek）在 50 轮内保持 `[[say|name|text]]` 格式的成功率极高
+- 正则管线 + 优雅降级已经覆盖了偶发的格式偏差
+- 零宽度编码的前提（后端控制宏结构）与 GW 的 say 宏设计不匹配
+- 实现成本高、调试成本高、收益有限
+
+**如果未来出现以下情况，可重新评估**：
+- 引入复杂嵌套宏（如多层条件分支、状态机指令）
+- 需要支持格式保持能力弱的本地小模型
+- say 宏之外出现大量后端可预注入的元数据标记
+
+届时可考虑的折中方案：不走零宽度编码，而是**后端 post-processing 修复**——AI 生成后，后端用 LLM 或规则引擎校验/修复宏格式，再下发前端。成本远低于零宽度编码，且不改变前端架构。
+
+---
+
+## 附录：卡片改造思路
+
+> 本节记录两张卡在 GW 渲染体系下的改造方向，目标是最大化利用 WE 引擎能力，让各自的叙事风格完整呈现。
+
+---
+
+### 维多利亚
+
+#### 当前状态
+
+已完成基础接入：`initial_variables`（18 个 KV）、`enabled_tools`、`<UpdateState>` 格式指令、`stats_bar` + `narrative_tags`（⏳存活天数 / ⌖当前位置）+ `floating_panels`（`character_sheet` 面板）。变量通过 SSE meta 事件实时推送，`CharacterSheet` 按前缀分组展示，管线已通。
+
+#### 渲染风格目标
+
+蒸汽朋克工业都会：**阶级感、金属质感、资产/声望的涨落戏剧性**。叙事文本应能直接传达"金币 +3""温莎声望 −5"这类事件的重量感，而不只是数字静默变化。
+
+#### 需要补充的标签与改造点
+
+**1. B 类内联标签 — 变量变化高亮**
+
+在叙事文本中，AI 输出资产/声望变化时应使用内联标签标注，前端渲染为带色彩的徽章：
+
+```
+你从罗斯柴尔德的账房拿到了报酬。<em class="gold">金币 +12</em>
+温莎家族的管家冷冷地看了你一眼。<em class="rep-down">温莎声望 −3</em>
+```
+
+- `gold` → 金色文字 + 淡金背景，用于货币收益
+- `rep-up` / `rep-down` → 绿/红色，用于声望涨落
+- `debt` → 橙色警示，用于债务增加
+
+这类标签目前 RENDER-SPEC 已有 B 类内联标签框架，需要在 `MessageBubble` 的 prose 渲染层补充这几个 class 的样式映射。
+
+**2. A 类块级标签 — 系统事件分离**
+
+每轮结束时 AI 输出的"状态摘要"（如"第 3 天结束，你在东区度过了一个不安的夜晚"）应用 `<aside>` 或自定义 `<sys-event>` 标签包裹，前端渲染为与叙事文本视觉分离的系统提示条（灰色细线 + 小字），避免与叙事段落混排。
+
+**3. `phone_status` 面板补充**
+
+当前 `character_sheet` 面板已能展示所有变量，但声望/债务的对比关系（五大家族各自的声望 vs 债务）更适合用 `phone_status` 面板的分组列表呈现。建议在 `floating_panels` 中增加一个 `phone_status` 面板，`display_vars` 列出：
+
+```json
+["温莎声望","温莎债务","罗斯柴尔德声望","罗斯柴尔德债务",
+ "克拉伦斯声望","克拉伦斯债务","莫里亚蒂声望","莫里亚蒂债务",
+ "瓦特声望","瓦特债务","市政厅声望","市政厅债务"]
+```
+
+配合 `label` 用 `"声望.温莎"` / `"债务.温莎"` 格式，`CharacterSheet` 会自动按"声望"/"债务"分组，形成对比视图。
+
+**4. `stats_bar` 精简**
+
+当前 `stats_bar` 展示了 12 项，信息密度过高。建议只保留 `存活天数` + `当前位置` + `金币`（三项核心），其余移入浮窗面板，减少顶栏噪音。
+
+**5. 待补充的后端能力**
+
+- `<em class="gold">` 等 B 类内联标签的 CSS 变量映射（前端 prose 层）
+- `<aside>` / `<sys-event>` 的块级渲染样式（前端）
+- 无需后端改动，变量管线已通
+
+---
+
+### 绿茵好莱坞
+
+#### 当前状态
+
+已完成：`initial_variables`（31 个 KV，含 `竞技能力.核心能力.*` 嵌套路径）、`enabled_tools`、`<UpdateState>` 格式指令、`narrative_tags`（🕐当前时间 / 📍当前地点）、`floating_panels`（`phone_status` + `character_sheet` 双面板）。
+
+**已知缺口**：原卡使用 `<UpdateVariable><JSONPatch>` RFC 6902 格式（支持 delta/insert/remove/move 操作），WE 引擎目前只支持 `<UpdateState>` 简单合并。已通过 `preset_entries` 格式指令绕过，但 AI 需要自行计算新值（如体能 100 → 85），无法用 `{"op":"add","path":"/竞技能力/当前体能","value":-15}` 这样的增量表达。这是中优先级后端任务。
+
+#### 渲染风格目标
+
+足球生涯模拟：**数据驱动、赛事节奏感、媒体/舆论氛围**。核心体验是"球员档案随剧情演进"，每场比赛后能力值变化、转会窗口的身价波动、媒体报道的舆论压力，都应在 UI 上有直接反馈。
+
+#### 需要补充的标签与改造点
+
+**1. A 类块级标签 — 赛事结果卡片**
+
+比赛结束后 AI 输出比分/评分时，应用结构化标签包裹，前端渲染为独立的"赛事结果卡"：
+
+```
+<match-result>
+主队 3 : 1 客队
+你的评分：8.2 ⭐  进球：1  助攻：0
+</match-result>
+```
+
+前端将此块渲染为带边框的卡片组件，与叙事文本视觉分离。目前 RENDER-SPEC 的 A 类块级标签框架可以承载，需要新增 `match-result` 的渲染 preset。
+
+**2. B 类内联标签 — 能力值变化**
+
+训练/比赛后能力值变化应内联标注：
+
+```
+这次高强度训练让你的速度有了明显提升。<em class="stat-up">速度 +2</em>
+连续三场首发消耗了你的体力。<em class="stat-down">体能 −15</em>
+```
+
+与维多利亚的 `gold`/`rep` 标签共用同一套 B 类内联渲染机制，只需增加 `stat-up`/`stat-down` class 映射。
+
+**3. A 类块级标签 — 媒体报道**
+
+足球卡的核心叙事氛围之一是媒体舆论。建议 AI 在重要事件后输出"新闻简报"块：
+
+```
+<news-brief>
+《体育画报》：「这位年轻球员的表现令人印象深刻，转会市场已有多家俱乐部关注。」
+</news-brief>
+```
+
+前端渲染为报纸风格的引用块（斜体 + 灰色边框 + 小字），强化媒体氛围感。
+
+**4. `phone_status` 面板优化**
+
+当前 `display_vars` 已列出基本信息和竞技能力，但 `竞技能力.核心能力.*` 八项能力值更适合用进度条形式展示（类似 FIFA 球员卡）。`StatsPanel` 目前只对 `label.includes('生命')` 的项目渲染进度条，需要扩展为：当 `value` 是 0–100 的数字且 `group` 为 `核心能力` 时，自动渲染进度条。
+
+**5. `narrative_tags` 扩展**
+
+当前只有时间和地点两个标签。建议增加：
+- `竞技能力.当前体能`（🔋，数值型，可配合进度条样式）
+- `竞技能力.竞技状态`（💫，数值型）
+
+这两项是比赛前玩家最关心的实时状态，放在顶栏 tags 里比进浮窗更直接。
+
+**6. JSONPatch 后端支持（中优先级）**
+
+补充 WE 引擎对 `<UpdateVariable><JSONPatch>` 的解析支持，允许 AI 用增量操作（`add`/`replace` with numeric delta）更新数值型变量，避免 AI 需要自行计算绝对值。这对体能、能力值这类频繁小幅变化的数值尤其重要，可以减少 AI 计算错误。
+
+**7. 待补充的后端能力**
+
+- JSONPatch 增量操作支持（后端 WE 引擎）
+- `match-result` / `news-brief` 块级标签的前端渲染 preset
+- `StatsPanel` 进度条扩展（前端，条件：`group === '核心能力'` 且值为 0–100）
+
+---
+
+### 两张卡的共同改造优先级
+
+| 优先级 | 项目 | 影响范围 |
+|--------|------|----------|
+| P0 | 变量管线验证（实际游玩测试） | 两张卡 |
+| P1 | B 类内联标签 CSS 映射（gold/rep/stat） | 两张卡 |
+| P1 | `StatsPanel` 进度条扩展（核心能力组） | 绿茵好莱坞 |
+| P2 | A 类块级标签 preset（match-result / news-brief / sys-event） | 两张卡 |
+| P2 | `phone_status` 声望/债务对比视图 | 美高之路 |
+| P3 | JSONPatch 增量操作后端支持 | 绿茵好莱坞 |
+
+---
+
+### 美高之路 — HTML 浮窗改造专项
+
+#### 原卡浮窗的设计
+
+原卡（SillyTavern 版）在每轮消息末尾输出一段完整的 HTML 文档（`美高之路浮窗部分.txt`），包含：
+- 完整的 `<style>` 块（CSS 变量、动画、响应式布局）
+- 多 Tab 面板（档案 / 学业 / 人际 / 物品）
+- `<script>` 块（读取变量、渲染 DOM、`localStorage` 存储主题设置）
+- FontAwesome / Google Fonts CDN 引用
+- `<StatusPlaceHolderImpl/>` 占位符（SillyTavern 专属，由 ST 在渲染时替换为实际变量 JSON）
+
+这套方案在 SillyTavern 里可行，因为 ST 直接把 AI 输出的 HTML 注入到聊天气泡的 `innerHTML` 中，并执行其中的 `<script>`。
+
+#### GW 当前的差距
+
+**backend-v2 引擎层面：**
+- 引擎不处理 `<StatusPlaceHolderImpl/>`，它会被原样流出到前端
+- 引擎不注入任何 HTML，也不做 HTML 清理/转义
+- 叙事文本原样经 SSE token 流推送，前端收到的是包含完整 HTML 文档的字符串
+
+**前端层面：**
+- `MessageBubble` 当前用 `prose` 模式渲染叙事文本，底层是 Markdown → React 组件，**不执行 `<script>`**
+- 即使用 `dangerouslySetInnerHTML` 注入 HTML，浏览器也不会执行动态插入的 `<script>` 标签（安全限制）
+- CDN 字体/图标（FontAwesome、Google Fonts）在 GW 的 CSP 策略下可能被拦截
+- `localStorage` 主题设置与 GW 自身的主题系统冲突
+
+#### 推荐改造方向：`<iframe>` 沙箱渲染
+
+将 AI 输出的 HTML 浮窗内容放入 `<iframe srcdoc="...">` 渲染，而不是直接注入 DOM：
+
+```tsx
+// 在 FloatingPanel 内部，检测到 html_panel preset 时：
+<iframe
+  srcdoc={htmlContent}
+  sandbox="allow-scripts allow-same-origin"
+  style={{ width: '100%', border: 'none', minHeight: 400 }}
+  title="status-panel"
+/>
+```
+
+优点：
+- `<script>` 可以正常执行（`sandbox="allow-scripts"`）
+- 与 GW 主 DOM 完全隔离，CSS 不污染，`localStorage` 不冲突
+- CDN 资源在 iframe 内独立加载
+- 无需修改引擎，前端单侧实现
+
+缺点/注意事项：
+- iframe 高度需要动态适配（`postMessage` 通知父窗口内容高度）
+- `<StatusPlaceHolderImpl/>` 需要在前端注入变量 JSON 后替换，再传给 `srcdoc`
+- SSE 流式输出期间 HTML 是不完整的，需要等 `done` 事件后再渲染 iframe（不能流式渲染 HTML）
+
+#### `<StatusPlaceHolderImpl/>` 的替换方案
+
+原卡的 `<script>` 里有 `const raw = null;` 这一行，ST 会把 `null` 替换为实际的变量 JSON 对象。GW 的替换逻辑：
+
+```ts
+// 在 handleTurnDone 之后，拿到 variables 快照：
+const injected = htmlContent.replace(
+  'const raw = null;',
+  `const raw = ${JSON.stringify(variables)};`
+)
+// 然后把 injected 传给 iframe srcdoc
+```
+
+这样原卡的 `render()` 函数就能正常读取变量并渲染 DOM，无需修改原卡 HTML。
+
+#### 触发机制：新增 `html_panel` preset
+
+在 `FloatingPanelDecl` 中新增 preset 类型：
+
+```json
+{
+  "id": "kora",
+  "type": "preset",
+  "preset": "html_panel",
+  "default_pinned": false,
+  "launcher": { "icon": "📱", "placement": "topbar" }
+}
+```
+
+前端 `PanelsHost` 检测到 `preset === 'html_panel'` 时，从最新一条 assistant 消息中提取 HTML 块（通过正则匹配 `<!DOCTYPE html>` 到 `</html>`），注入变量后渲染 iframe。
+
+#### HTML 提取方式
+
+AI 每轮在叙事末尾输出完整 HTML 文档。前端需要：
+1. 从消息内容中用正则提取 HTML 块：`/<!DOCTYPE html>[\s\S]*?<\/html>/i`
+2. 叙事文本部分（HTML 之前的内容）正常渲染为 prose
+3. HTML 块不在消息气泡内显示，只在浮窗 iframe 中渲染
+
+这需要在 `MessageBubble` 的内容预处理阶段增加一个 `splitHtmlPanel()` 步骤，类似现有的 `splitSayBlocks()`。
+
+#### SSE 流式输出的影响
+
+**流式输出期间 HTML 不可渲染。** 原因：
+- HTML 文档在流式输出中途是不完整的（`</html>` 还没到）
+- 不完整的 HTML 传给 `srcdoc` 会导致 `<script>` 执行失败或 DOM 结构错误
+- 正确做法：流式期间只渲染叙事文本部分，HTML 块用占位符（如加载动画）代替；收到 `done` 事件后，提取完整 HTML，注入变量，渲染 iframe
+
+这与现有的 `StreamingBubble` → `MessageBubble` 切换时机一致，不需要额外的状态管理。
+
+#### 需要补充的前端工作
+
+| 工作项 | 说明 |
+|--------|------|
+| `splitHtmlPanel()` 工具函数 | 从消息内容中分离叙事文本和 HTML 块 |
+| `HtmlPanelFrame` 组件 | iframe 渲染 + 变量注入 + 高度自适应 |
+| `PanelsHost` 扩展 | 识别 `html_panel` preset，传入最新 HTML 内容 |
+| `FloatingPanelDecl` 类型扩展 | 新增 `preset: 'html_panel'` |
+| 流式期间占位符 | done 前显示加载状态，done 后渲染 iframe |
+
+#### 后端是否需要改动
+
+**不需要。** 引擎已经原样流出 HTML，变量通过 SSE meta 事件推送。整个改造是纯前端工作。唯一的潜在后端优化是：在 `regex_profiles` 中添加一条规则，把 `<StatusPlaceHolderImpl/>` 替换为一个固定占位符（如 `__STATUS_JSON__`），让前端替换更稳定——但直接替换 `const raw = null;` 也足够可靠。
+
+---
+
+## 十、GW Text 游玩体验建议
+
+> 本节从整体视角梳理 WE 引擎已有能力与前端的结合方式，以及 Text 游玩页在内测后值得深入的方向。
+
+### 充分利用 WE 引擎现有能力
+
+**1. 变量门控世界书（已就绪，前端未可视化）**
+
+WE 引擎已支持 `var:key=value` / `var:key!=value` 硬条件门控世界书词条。这意味着创作者可以声明"当 `温莎声望 >= 50` 时，注入温莎家族内部情报词条"，完全不需要 AI 自己判断。
+
+前端建议：在 WorldbookDrawer 词条展开态显示触发条件标签（F27），让玩家理解哪些世界书内容是动态解锁的，增加探索感。
+
+**2. 记忆分阶段注入（已就绪，前端未展示）**
+
+Memory 的 `stage_tags` 字段允许记忆只在特定 `game_stage` 变量值时注入。创作者可以用这个机制实现"第一章的记忆不污染第二章的上下文"，或者"只有进入某个派系后，相关 NPC 的记忆才开始注入"。
+
+前端建议：TechStatsModal Memory Tab 展示 `stage_tags`（F28），让创作者在调试时能看到记忆的注入条件。
+
+**3. Director 槽做变量计算（已就绪，创作者配置）**
+
+WE 的 Director 槽（廉价模型）可以在 Narrator 生成前做预分析。创作者可以在 `preset_entries` 中给 Director 一个专门的指令：分析本轮行动，计算变量变化量，输出 `<UpdateState>` 块。Narrator 槽只负责叙事，不做数值计算。
+
+这样可以把"数值计算"和"叙事生成"分离到两个模型槽，减少 Narrator 的认知负担，提高叙事质量。对于维多利亚这类数值密集型游戏尤其有价值。
+
+**4. ScheduledTurn 做 NPC 自主回合（已就绪，前端未接入）**
+
+WE 支持变量阈值触发 NPC 自主回合（`ScheduledTurn`）。例如：当 `存活天数` 每增加 7 时，自动触发一次"周报"回合，NPC 主动发来消息。
+
+前端目前没有处理 NPC 主动消息的 UI 路径。建议：NPC 主动消息以特殊样式渲染（如左侧带 NPC 头像 + 不同背景色），与玩家触发的 AI 回复视觉区分。
+
+**5. Preflight 选项预测（P-4L，前端 F26）**
+
+后端 P-4L 完成后，每轮 AI 回复结束后会异步预测 3 个可能的玩家行动，写入 `predicted_choices` 变量。前端在 ChatInput 上方渲染这些预测选项（淡入动画），玩家可以点选或忽略自由输入。
+
+这是 GW 超越 ST 的核心体验差异之一：ST 的选项完全由 AI 在叙事中输出，GW 的选项由 Director 槽独立预测，质量更稳定，且不占用叙事 token。
+
+**6. 边界归档做长期记忆压缩（已就绪，前端未接入）**
+
+`POST /sessions/:id/archive` 可以触发边界归档，生成结构化摘要并写入 Memory。对于长期游玩（50+ 轮）的游戏，建议前端在 TechStatsModal 或存档管理抽屉中提供"归档当前进度"按钮，让玩家主动触发，防止上下文窗口溢出导致 AI 遗忘早期剧情。
+
+---
+
+### Text 游玩页的体验优先级建议
+
+**近期（内测前）**：
+- F9 背景图是氛围感的核心，优先级最高，等背景图素材就绪后立即实现
+- F21 B 类内联标签 CSS 映射成本极低（纯 CSS），但对维多利亚/绿茵好莱坞的叙事质感提升明显，建议随 F9 一起做
+
+**中期（内测后）**：
+- F11 Swipe 多页是 ST 用户最熟悉的功能，缺失会被老玩家直接注意到，应在内测反馈收集后优先补齐
+- F26 Preflight 选项预测是 GW 的差异化功能，等 P-4L 后端就绪后立即接入
+- F23 html_panel iframe 沙箱是美高之路等原生 HTML 浮窗卡的关键，但实现复杂度中等，建议在 F9/F21 之后
+
+**长期（创作者工具成熟后）**：
+- 引导创作者从手写 HTML 浮窗迁移到声明式 `phone_status` / `character_sheet` preset，降低维护成本
+- 完善 `ui_config` 的 `first_mes_style` 字段（cinematic / letter 等开场风格），让创作者控制游戏入口体验
+- 考虑在 WorldbookDrawer 中增加"当前激活词条"视图（实时显示本轮哪些词条被触发），帮助玩家理解世界书的动态性

@@ -51,7 +51,7 @@ export default function ChatInput({ sessionId, inputMode = 'free', placeholder =
     if (!content || streaming) return
     setText('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
-    const ctrl = startStream(sessionId)
+    const ctrl = startStream(sessionId, content)
     streamTurn(
       sessionId, content,
       appendDelta,
@@ -66,9 +66,11 @@ export default function ChatInput({ sessionId, inputMode = 'free', placeholder =
     setMenuOpen(false)
     if (streaming) return
     try {
-      await sessionsApi.regen(sessionId)
-      onTurnDone()
-    } catch { /* ignore */ }
+      const turn = await sessionsApi.regen(sessionId)
+      onTurnDone(turn)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
   }
 
   async function handleSuggest() {
@@ -91,11 +93,6 @@ export default function ChatInput({ sessionId, inputMode = 'free', placeholder =
     window.dispatchEvent(new CustomEvent('gw:theme', { detail: theme }))
   }
 
-  function setSkin(skin: NonNullable<UIConfig['component_skin']>) {
-    localStorage.setItem('gw_component_skin', skin)
-    window.dispatchEvent(new CustomEvent('gw:skin', { detail: skin }))
-  }
-
   const isChoiceOnly = inputMode === 'choice_only'
   const isCommand = inputMode === 'command'
   const glassSkin = componentSkin === 'glass-ornament'
@@ -114,7 +111,7 @@ export default function ChatInput({ sessionId, inputMode = 'free', placeholder =
         <div className="relative shrink-0" ref={menuRef}>
           <button
             className={`w-8 h-8 flex items-center justify-center transition-colors ${glassSkin ? 'rounded-xl border' : 'rounded-lg text-[var(--color-text-muted)]'}`}
-            onClick={() => setMenuOpen(o => !o)}
+            onClick={() => { setThemeOpen(false); setMenuOpen(o => !o) }}
             aria-label="选项"
             style={{
               color: 'var(--color-text-muted)',
@@ -122,7 +119,7 @@ export default function ChatInput({ sessionId, inputMode = 'free', placeholder =
               backgroundColor: glassSkin ? 'rgba(255,255,255,0.02)' : 'transparent',
             }}
           >
-            ☰
+            <span className="text-[15px] leading-none">☰</span>
           </button>
           {menuOpen && (
             <div className="absolute bottom-full left-0 mb-2 w-64 rounded-xl border shadow-xl z-20 overflow-hidden"
@@ -163,10 +160,9 @@ export default function ChatInput({ sessionId, inputMode = 'free', placeholder =
                 <MiniMenuButton label="深蓝默认" onClick={() => { setTheme('default-dark'); setThemeOpen(false) }} />
                 <MiniMenuButton label="哥特暗黑" onClick={() => { setTheme('gothic'); setThemeOpen(false) }} />
                 <MiniMenuButton label="柔幻奇境" onClick={() => { setTheme('soft-fantasy'); setThemeOpen(false) }} />
-              </MenuSection>
-              <MenuSection title="皮肤">
-                <MiniMenuButton label="极简" onClick={() => { setSkin('minimal-chrome'); setThemeOpen(false) }} />
-                <MiniMenuButton label="玻璃" onClick={() => { setSkin('glass-ornament'); setThemeOpen(false) }} />
+                <MiniMenuButton label="赛博朋克" onClick={() => { setTheme('cyberpunk'); setThemeOpen(false) }} />
+                <MiniMenuButton label="羊皮纸" onClick={() => { setTheme('parchment'); setThemeOpen(false) }} />
+                <MiniMenuButton label="极简" onClick={() => { setTheme('minimal'); setThemeOpen(false) }} />
               </MenuSection>
             </div>
           )}
@@ -176,7 +172,7 @@ export default function ChatInput({ sessionId, inputMode = 'free', placeholder =
       {!isChoiceOnly && (
         <textarea
           ref={textareaRef}
-          className={`flex-1 resize-none px-3 py-2 text-sm outline-none min-h-[36px] leading-5 border transition-colors ${glassSkin ? 'rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]' : 'rounded-lg'} ${isCommand ? 'font-mono' : ''}`}
+          className={`flex-1 resize-none px-3 py-2 text-[15px] font-medium outline-none min-h-[36px] leading-6 border transition-colors ${glassSkin ? 'rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]' : 'rounded-lg'} ${isCommand ? 'font-mono' : ''}`}
           style={{
             backgroundColor: glassSkin ? 'rgba(255,255,255,0.04)' : 'var(--color-surface)',
             borderColor: glassSkin ? 'rgba(255,255,255,0.08)' : 'var(--color-border)',

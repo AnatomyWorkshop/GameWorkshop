@@ -66,12 +66,13 @@ export default function PanelsHost({
             icon={p.launcher.icon}
             onClose={() => onClosePanel(p.id)}
             style={getPanelStyle(idx)}
-            headerHidden={p.preset === 'telemetry_debug'}
-            closeOnOutsideClick={p.preset !== 'telemetry_debug'}
-            closeOnPanelClick={p.preset === 'telemetry_debug'}
+            headerHidden={p.preset === 'telemetry_debug' || p.preset === 'character_sheet' || p.preset === 'phone_status'}
+            closeOnOutsideClick={p.preset === 'telemetry_debug'}
+            closeOnPanelClick={p.preset === 'telemetry_debug' || p.preset === 'character_sheet' || p.preset === 'phone_status'}
+            draggable={p.preset === 'telemetry_debug' ? false : !(p.preset === 'character_sheet' || p.preset === 'phone_status')}
           >
             {p.preset === 'character_sheet' && <CharacterSheet variables={variables} tokens={tokens} />}
-            {p.preset === 'phone_status' && <PhoneStatus variables={variables} tokens={tokens} />}
+            {p.preset === 'phone_status' && <PhoneStatus variables={variables} tokens={tokens} displayVars={p.display_vars} />}
             {p.preset === 'telemetry_debug' && <TelemetryDebug floorCount={floorCount} tokenUsed={tokenUsed} modelLabel={modelLabel} />}
           </FloatingPanel>
         )

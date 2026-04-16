@@ -31,11 +31,15 @@ export interface NarrativeTagItem {
 
 export interface FloatingPanelDecl {
   id: string
-  type: 'preset'
-  preset: 'narrative_tags' | 'phone_status' | 'character_sheet' | 'telemetry_debug'
+  type: 'preset' | 'interactive' | 'custom'
+  preset?: 'narrative_tags' | 'phone_status' | 'character_sheet' | 'telemetry_debug'
+  /** type: 'interactive' — Light 游玩页用，内容由前端 preset 决定 */
+  interactive_preset?: 'inventory' | 'skill_tree' | 'map' | string
   default_pinned?: boolean
-  position?: 'top_center_bar' | 'right_stack'
-  launcher: { icon: string; placement: 'topbar' }
+  position?: 'top_center_bar' | 'right_stack' | 'bottom_bar' | 'free'
+  launcher: { icon: string; placement: 'topbar' | 'stage_hud' | 'none' }
+  /** phone_status / character_sheet 面板展示的变量路径列表（支持 "group.key" 嵌套路径） */
+  display_vars?: string[]
 }
 
 export interface TokenExtractRule {
@@ -44,12 +48,47 @@ export interface TokenExtractRule {
   placement?: string[]
 }
 
+/** 单条正则替换规则 */
+export interface RegexRule {
+  /** 执行顺序，数字越小越先执行 */
+  order: number
+  /** JS 正则字符串（不含 / 包裹），如 "<thinking>[\\s\\S]*?</thinking>" */
+  pattern: string
+  /** 替换字符串，只允许纯文本或官方白名单标记 */
+  replacement: string
+  /** 作用范围：narrative=叙事文本，extract=提取前预处理 */
+  scope: 'narrative' | 'extract'
+  flags?: string
+}
+
+/** 正则替换表（可打包分发） */
+export interface RegexProfile {
+  id: string
+  version: string
+  author?: string
+  rules: RegexRule[]
+}
+
+/** 游戏包内声明的正则表引用 */
+export interface RegexProfileRef {
+  /** 格式：namespace:name，如 "alice:core" 或 "creator:my-format" */
+  ref: string
+  version?: string
+  /** true = 随游戏包携带，导入时直接安装 */
+  bundled?: boolean
+  /** 内联规则（bundled 时使用） */
+  rules?: RegexRule[]
+}
+
 export interface UIConfig {
-  theme_preset?: 'default-dark' | 'gothic' | 'soft-fantasy'
+  theme_preset?: 'default-dark' | 'gothic' | 'soft-fantasy' | 'cyberpunk' | 'parchment' | 'minimal'
   layout_preset?: 'novel-column' | 'full-bleed' | 'chat-card'
   component_skin?: 'minimal-chrome' | 'glass-ornament'
-  theme?: 'default-dark' | 'gothic' | 'soft-fantasy'
+  theme?: 'default-dark' | 'gothic' | 'soft-fantasy' | 'cyberpunk' | 'parchment' | 'minimal'
   message_style?: 'prose' | 'bubble'
+  choice_columns?: number
+  subtitle?: string
+  first_options?: string[]
   stats_bar?: {
     items?: Array<{ key: string; icon?: string; label?: string }>
   }
@@ -80,6 +119,8 @@ export interface UIConfig {
   narrative_tags?: { items: NarrativeTagItem[] }
   floating_panels?: { panels: FloatingPanelDecl[] }
   token_extract_rules?: TokenExtractRule[]
+  /** 正则替换表引用列表（按 order 合并执行） */
+  regex_profiles?: RegexProfileRef[]
 }
 
 export interface GameListResponse {
@@ -128,6 +169,20 @@ export interface TurnResponse {
   vn: VNDirectives | null
 }
 
+export interface PromptPreviewMessage {
+  role: 'system' | 'user' | 'assistant' | string
+  content: string
+}
+
+export interface PromptPreview {
+  messages: PromptPreviewMessage[]
+  est_tokens: number
+  block_count: number
+  preset_hits: number
+  worldbook_hits: number
+  memory_used: boolean
+}
+
 export interface VNDirectives {
   bg?: string
   sprites?: Array<{ slot: 'left' | 'center' | 'right'; image: string }>
@@ -160,8 +215,15 @@ export interface WorldbookEntry {
   content: string
   comment: string
   constant?: boolean
+  enabled?: boolean
+  priority?: number
   player_visible?: boolean
   display_category?: string
+}
+
+export interface MergedWorldbookEntry extends WorldbookEntry {
+  is_overridden?: boolean
+  is_new?: boolean
 }
 
 export interface GameStats {

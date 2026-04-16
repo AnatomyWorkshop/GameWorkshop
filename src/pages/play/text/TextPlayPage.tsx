@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useFloors, useSession } from '@/queries/sessions'
+import { useBranches, useFloors, usePromptPreview, useSession } from '@/queries/sessions'
 import { useGame } from '@/queries/games'
-import MessageList from '@/components/chat/MessageList'
-import ChatInput from '@/components/chat/ChatInput'
+import MessageList from './chat/MessageList'
+import ChatInput from './chat/ChatInput'
 import TextPlayTopBar from './components/TextPlayTopBar'
 import PanelsHost from './panels/PanelsHost'
 import { useStreamStore } from '@/stores/stream'
 import { getRuntimeConfig } from '@/stores/runtime'
 import { applyTheme, clearTheme, DEFAULT_THEME } from '@/styles/themes'
-import { extractTokens } from '@/utils/tokenExtract'
+import { extractChoiceOptions, extractTokens } from '@/utils/tokenExtract'
+import { runRegexPipeline } from '@/utils/regexPipeline'
 import type { Floor, Game, TurnResponse, UIConfig } from '@/api/types'
 import type { NarrativeToken } from '@/utils/tokenExtract'
 import { usePanels } from './hooks/usePanels'
@@ -33,11 +34,14 @@ export default function TextPlayPage() {
 }
 
 function TextPlayPageReal({ sessionId, onBack }: { sessionId: string; onBack: () => void }) {
+  const [branchId, setBranchId] = useState('main')
   const sessionQ = useSession(sessionId)
   const session = sessionQ.data
   const { data: game } = useGame(session?.game_id ?? '', { enabled: !!session?.game_id })
-  const { data: floors = [], refetch } = useFloors(sessionId)
-  const { streaming, buffer, pendingMessage, clearPending, streamError, clearError } = useStreamStore()
+  const { data: branches = [], refetch: refetchBranches } = useBranches(sessionId)
+  const { data: floors = [], refetch } = useFloors(sessionId, branchId)
+  const { streaming, buffer, pendingUserInput, pendingMessage, clearPending, clearPendingUserInput, streamError, clearError } = useStreamStore()
+  const openingPreviewQ = usePromptPreview(sessionId, branchId === 'main' && floors.length === 0 && !streaming)
   const [lastOptions, setLastOptions] = useState<string[]>([])
   
   // 初始化变量和 token（如果 API 有带回最后状态则优先，否则为空）
@@ -72,9 +76,34 @@ function TextPlayPageReal({ sessionId, onBack }: { sessionId: string; onBack: ()
     api_key: runtimeCfg.api_key,
     base_url: runtimeCfg.base_url,
     model: runtimeCfg.model_label,
+    branch_id: branchId,
   }
 
   const { panels: panelStates, togglePanel, closePanel, isPanelOpen } = usePanels()
+  const streamingBuffer = streaming ? buffer : (pendingMessage ?? null)
+  const openingAssistant = branchId === 'main' && floors.length === 0 ? (openingPreviewQ.data?.messages.find((m) => m.role === 'assistant')?.content ?? '') : ''
+  const uiFloors: Floor[] =
+    floors.length > 0
+      ? floors
+      : openingAssistant
+        ? [{
+            id: 'opening',
+            seq: 0,
+            status: 'committed',
+            created_at: new Date().toISOString(),
+            messages: [{ role: 'assistant', content: openingAssistant }],
+            token_used: 0,
+          } as any]
+        : []
+
+  useEffect(() => {
+    if (!uiCfg?.first_options || uiCfg.first_options.length === 0) return
+    if (lastOptions.length > 0) return
+    if (streaming || streamingBuffer != null || pendingUserInput) return
+    const hasUser = floors.some((f) => f.messages.some((m) => m.role === 'user'))
+    if (hasUser) return
+    setLastOptions(uiCfg.first_options)
+  }, [uiCfg?.first_options, lastOptions.length, streaming, pendingUserInput, floors, streamingBuffer])
 
   // ── 主题加载：主题预设 → color_scheme 覆盖 ──────────────────────────────────
   useEffect(() => {
@@ -112,6 +141,17 @@ function TextPlayPageReal({ sessionId, onBack }: { sessionId: string; onBack: ()
   }, [floors, pendingMessage, clearPending])
 
   useEffect(() => {
+    if (!pendingUserInput) return
+    const needle = pendingUserInput.trim()
+    if (!needle) {
+      clearPendingUserInput()
+      return
+    }
+    const exists = floors.some((f) => f.messages.some((m) => m.role === 'user' && m.content.trim() === needle))
+    if (exists) clearPendingUserInput()
+  }, [floors, pendingUserInput, clearPendingUserInput])
+
+  useEffect(() => {
     function onTheme() {
       const el = document.documentElement
       applyTheme(getThemePreset(uiCfg), el)
@@ -123,10 +163,16 @@ function TextPlayPageReal({ sessionId, onBack }: { sessionId: string; onBack: ()
   }, [uiCfg])
 
   function handleTurnDone(turn?: TurnResponse) {
-    setLastOptions(turn?.options ?? [])
+    let opts = turn?.options ?? []
+    if (opts.length === 0 && turn?.narrative) {
+      const extracted = extractChoiceOptions(turn.narrative).choices
+      if (extracted.length > 0) opts = extracted
+    }
+    setLastOptions(opts)
     if (turn?.variables) setVariables(turn.variables as Record<string, unknown>)
     if (turn?.narrative && uiCfg?.token_extract_rules?.length) {
-      const { tokens } = extractTokens(turn.narrative, uiCfg.token_extract_rules)
+      const cleaned = runRegexPipeline(turn.narrative, uiCfg.regex_profiles ?? [], 'extract')
+      const { tokens } = extractTokens(cleaned, uiCfg.token_extract_rules)
       setNarrativeTokens(tokens)
     }
     refetch()
@@ -144,9 +190,49 @@ function TextPlayPageReal({ sessionId, onBack }: { sessionId: string; onBack: ()
     })
   }
 
-  const streamingBuffer = streaming ? buffer : (pendingMessage ?? null)
+  async function handleForkFromFloor(floorId: string) {
+    if (!confirm('从这条消息创建新 Branch？（不会切换分支）')) return
+    try {
+      const { sessionsApi } = await import('@/api/sessions')
+      await sessionsApi.createBranchFromFloor(sessionId, floorId)
+      await refetchBranches()
+    } catch {
+    }
+  }
   const lastTokenUsed = floors.length > 0 ? floors[floors.length - 1]?.token_used : undefined
   const hasStatsBar = !!(uiCfg?.stats_bar?.items && uiCfg.stats_bar.items.length > 0)
+
+  if (sessionQ.isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center" style={{ color: 'var(--color-text)' }}>
+        加载中…
+      </div>
+    )
+  }
+
+  if (sessionQ.isError || !session) {
+    return (
+      <div className="h-screen flex flex-col" style={{ color: 'var(--color-text)', backgroundColor: 'var(--color-bg)' }}>
+        <div className="w-full max-w-[720px] mx-auto px-4 py-4">
+          <button
+            className="px-3 py-2 rounded-lg border"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            onClick={onBack}
+          >
+            返回
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center px-6">
+          <div className="max-w-md text-center">
+            <div className="text-base font-medium mb-2">会话不存在或后端未连接</div>
+            <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              可能原因：重新 seed 后旧 session 被清理；或后端未运行在 8080。
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-screen overflow-hidden flex flex-col relative"
@@ -154,6 +240,7 @@ function TextPlayPageReal({ sessionId, onBack }: { sessionId: string; onBack: ()
 
       <TextPlayTopBar
         title={title}
+        subtitle={uiCfg?.subtitle ?? game?.short_desc ?? undefined}
         sessionId={sessionId}
         gameId={session?.game_id ?? ''}
         onBack={onBack}
@@ -161,18 +248,30 @@ function TextPlayPageReal({ sessionId, onBack }: { sessionId: string; onBack: ()
         floatingPanels={uiCfg?.floating_panels?.panels ?? []}
         onTogglePanel={togglePanel}
         isPanelOpen={isPanelOpen}
+        branchId={branchId}
+        branches={['main', ...branches.filter((b) => b.branch_id !== 'main').map((b) => b.branch_id)]}
+        onBranchChange={(bid) => {
+          setLastOptions([])
+          setBranchId(bid)
+        }}
       />
 
       <div className="relative overflow-hidden flex-1 min-h-0">
         <div className="h-full min-h-0 w-full max-w-[720px] mx-auto flex flex-col">
           <div className="h-full min-h-0 flex flex-col">
           <MessageList
-            floors={floors}
+            floors={uiFloors}
             sessionId={sessionId}
             messageStyle={messageStyle}
+            characters={uiCfg?.characters ?? undefined}
+            avatarMode={uiCfg?.avatar_mode ?? 'none'}
+            choiceColumns={uiCfg?.choice_columns}
+            optimisticUserMessage={pendingUserInput}
             streamingBuffer={streamingBuffer}
             lastOptions={streaming ? [] : lastOptions}
+            regexProfiles={uiCfg?.regex_profiles}
             onChoose={handleChoose}
+            onForkFromFloor={handleForkFromFloor}
             onFloorEdited={() => refetch()}
             onFloorDeleted={() => refetch()}
           />

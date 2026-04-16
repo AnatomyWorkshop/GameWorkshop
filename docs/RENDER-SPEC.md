@@ -42,7 +42,7 @@
 | `<aside>` | 旁白/系统提示 | `.gw-aside` | `--color-aside` |
 | `<quote>` | 引用/回忆/闪回 | `.gw-quote` | `--color-quote-border` |
 
-处理位置：`MessageBubble` 渲染前调用 `preprocessNarrative()`，在 ReactMarkdown 之前完成替换。
+处理位置：`runRegexPipeline('narrative')` 阶段（`ALICE_CORE_RULES` order 10–14），在 ReactMarkdown 之前完成替换。`preprocessNarrative()` 已移除，管线统一。
 
 #### C 类：面板数据标签（→ 悬浮面板）
 
@@ -168,13 +168,14 @@ AI 原始输出
     → A 类标签 → NarrativeTagsBar tokens（从文本移除）
     → C 类标签 → panel tokens（从文本移除）
     → cleanText（仅含 B 类标签 + 普通 Markdown）
-    ↓ 前端 preprocessNarrative()（MessageBubble 内）
-    → B 类标签 → <span/div class="gw-*">（仅白名单）
+    ↓ 前端 runRegexPipeline('narrative')（MessageBubble 内）
+    → 清洗噪声（thinking/content 等）+ B 类标签 → <span/div class="gw-*">（仅白名单）
+    → 同时移除 `<choice>...</choice>`（避免正文显示，供 options 兜底提取）
     ↓ ReactMarkdown 渲染（rehype-raw + rehype-sanitize）
 
 安全边界（必须写死）：
 - 不允许创作者/AI 输出任意 HTML 生效
-- 仅允许 `preprocessNarrative()` 生成的 `gw-*` 白名单结构通过 sanitize
+- 仅允许官方规则生成的 `gw-*` 白名单结构通过 sanitize
 - 不允许 `<script>`、事件属性、内联 style 等
 ```
 
@@ -465,6 +466,41 @@ v0/v1 阶段强烈不建议。原因：
 
 在 WE/GW 的目标路径里，我们不走“执行脚本注入 HTML”，而走：
 - **WE 产结构化数据**（Variables / Tokens / Telemetry）
+
+---
+
+## 八、悬浮窗（FloatingPanel）现状与分类建议
+
+### 8.1 现状（Text 游玩页）
+
+当前 Text 页的浮窗都属于“展示型容器”，核心可配置项来自 `FloatingPanel`：
+- `headerHidden`：是否显示标题栏（标题/关闭按钮所在）
+- `closeOnOutsideClick`：点击面板外是否关闭
+- `closeOnPanelClick`：点击面板内是否关闭（用于“点击即关闭”的轻面板）
+- `draggable`：是否允许拖拽（目前用于调试或少数面板）
+
+结合现有 preset（如 `character_sheet` / `phone_status` / `telemetry_debug`），当前默认策略倾向于：
+- 展示型面板：隐藏 header，点击面板内关闭（快速查看）
+- 调试面板：显示 header，点击外部关闭（避免误触）
+
+### 8.2 分类思路（建议）
+
+你提出的分类标准是可行的，而且比“按具体面板名硬编码”更稳定：
+
+1. **可互动 / 不可互动**
+   - 不可互动（只读展示）：允许 `closeOnPanelClick=true`（点一下就收起，成本最低）
+   - 可互动（包含输入、按钮、列表、滑动等）：应强制 `closeOnPanelClick=false`，避免误触导致丢操作
+
+2. **关闭手势：点内 / 点外**
+   - 点外关闭：适合“工具箱/设置面板/调试面板”
+   - 点内关闭：适合“轻提示/一眼读完的信息卡”
+
+更进一步的落地方向是把这些行为抽象成“面板行为预设”，例如：
+- `behavior: 'peek'`（点内关闭、点外不关、无 header）
+- `behavior: 'tool'`（点外关闭、点内不关、有 header）
+- `behavior: 'pinned'`（都不自动关闭，只能点显式按钮关闭）
+
+这样 `FloatingPanelDecl` 的声明就可以从“列一堆布尔值”变成“选一个行为 preset + 少量覆写”，可维护性会更好。
 - **GW 用 preset 渲染**（phone_status / telemetry_debug / character_sheet）
 - **可选的 Light/VNRenderer** 在舞台层承载更丰富的画面与 HUD
 
@@ -540,7 +576,7 @@ TopBar ⧉ 按钮打开存档列表，支持切换/新建/删除存档。
 
 ## 七、实施清单
 
-### 阶段 A：官方标签落地（当前阶段）
+### 阶段 A：官方标签落地
 
 - [x] 架构调整：`components/play/presets/` → `pages/play/text/panels/presets/`
 - [x] 架构调整：`features/playPanels/` → `pages/play/text/components/`
@@ -548,9 +584,9 @@ TopBar ⧉ 按钮打开存档列表，支持切换/新建/删除存档。
 - [x] `globals.css` 补充 `.gw-em-gold` / `.gw-em-danger` / `.gw-em-info` / `.gw-aside` / `.gw-quote` CSS 类
 - [x] `MessageBubble` 加 `preprocessNarrative()` 函数（B 类标签 → gw-* span）
 - [x] `themes.ts` 为现有 3 套主题补齐内联样式色变量
-- [ ] `api/types.ts` 扩展 `FloatingPanelDecl`（加 `interactive` / `custom` type，加 `position: 'free'`）
+- [x] `api/types.ts` 扩展 `FloatingPanelDecl`（加 `interactive` / `custom` type，加 `position: 'free'`）
 
-### 阶段 B：主题预设完善（当前阶段）
+### 阶段 B：主题预设完善
 
 - [x] `themes.ts` + `globals.css` 补充 `cyberpunk` / `parchment` / `minimal` 等全套 6 种预设
 - [x] `TextPlayPage` 支持 `ui_config.color_scheme.bg_image`（背景图层）
@@ -559,7 +595,16 @@ TopBar ⧉ 按钮打开存档列表，支持切换/新建/删除存档。
 - [x] 移除原有的组件换肤（极简/玻璃）机制，将样式统一收敛到主题内
 - [x] 移除气泡样式切换与代码，全局固定使用文本流呈现
 
-### 阶段 C：后端 token 提取（v1，官方标签稳定后，可选）
+### 阶段 B.5：架构重构 + 爱丽丝规则集（2026-04-15）
+
+- [x] `components/chat/` → `pages/play/text/chat/`（Text 专属组件归位，`components/` 只留真正共享组件）
+- [x] 新增 `utils/regexPipeline.ts`：爱丽丝规则集（`alice:core`）+ 管线执行器
+- [x] `api/types.ts` 新增 `RegexRule` / `RegexProfile` / `RegexProfileRef` 类型
+- [x] `UIConfig` 新增 `regex_profiles?: RegexProfileRef[]`
+- [x] `MessageBubble` 接入 `runRegexPipeline`（渲染前跑爱丽丝规则集）
+- [x] `TextPlayPage.handleTurnDone` 接入 `runRegexPipeline`（token 提取前跑 extract 规则）
+
+### 阶段 C：后端 token 提取（官方标签稳定后，可选）
 
 - [ ] `StreamMeta` 加 `Tokens []NarrativeToken` 字段
 - [ ] 后端 `ExtractTokens()` 提取 A 类官方标签
@@ -570,6 +615,144 @@ TopBar ⧉ 按钮打开存档列表，支持切换/新建/删除存档。
 - [ ] `LightPlayPage` 自制 VN 舞台 + HUD
 - [ ] `FloatingPanelDecl.type: 'interactive'` 实现交互型浮窗
 - [ ] 共享组件提升：`NarrativeTagsBar`、`FloatingPanel` 移到 `components/`
+
+---
+
+## 八、当前前端架构状态（2026-04-15）
+
+```
+src/
+├── api/                    # 类型 + 请求函数（通用）
+├── components/             # 真正跨页面共享的组件
+│   ├── game/               GameCard, HeroSection, StatsBar, ActionBar
+│   ├── layout/             AppLayout
+│   ├── overlay/            FloatingPanel, Popover
+│   └── social/             CommentCore
+├── pages/
+│   ├── game/               游戏详情页
+│   ├── my-library/         我的库
+│   ├── public-library/     公共库
+│   └── play/
+│       └── text/           Text 游玩页（自包含）
+│           ├── TextPlayPage.tsx
+│           ├── chat/       ChatInput, MessageBubble, MessageList, StreamingBubble
+│           ├── components/ TextPlayTopBar, PanelSwitcherMenu
+│           ├── hooks/      usePanels
+│           └── panels/     PanelsHost, StatsPanel, TagsPanel, presets/
+├── queries/                React Query hooks（通用）
+├── stores/                 Zustand stores（通用）
+├── styles/                 themes.ts, globals.css
+└── utils/
+    ├── tokenExtract.ts     A/C 类标签提取
+    └── regexPipeline.ts    爱丽丝规则集 + 管线执行器
+```
+
+---
+
+## 九、爱丽丝规则集（Alice Ruleset）
+
+### 9.1 定位
+
+爱丽丝规则集（`alice:core`）是 GW 官方内置的正则替换规则集，对所有 Text 游戏渲染默认启用。它在渲染管线的最前端运行，负责清理模型输出噪声、标准化格式，让后续的标签提取和 Markdown 渲染得到干净的输入。
+
+**管线位置**：
+```
+AI 原始输出
+    ↓ runRegexPipeline(text, regexProfiles, 'narrative')  ← 爱丽丝规则集在此
+    ↓ extractTokens()（A/C 类标签提取）
+    ↓ preprocessNarrative()（B 类标签 → gw-* span）
+    ↓ ReactMarkdown 渲染
+```
+
+### 9.2 当前规则表
+
+规则定义在 `src/utils/regexPipeline.ts` 的 `ALICE_CORE_RULES` 数组，按 `order` 升序执行。
+
+| order | 规则说明 | pattern | replacement | scope |
+|---|---|---|---|---|
+| 1 | 移除 CoT 思考块 | `<thinking>[\s\S]*?</thinking>` | `""` | narrative |
+| 2 | 剥离 content 包裹 | `<content>([\s\S]*?)</content>` | `"$1"` | narrative |
+
+### 9.3 扩充规则指南
+
+根据真实游戏测试结果，在 `ALICE_CORE_RULES` 数组追加新规则：
+
+```typescript
+{
+  order: 3,           // 唯一序号，数字越小越先执行
+  pattern: '...',     // JS 正则字符串（不含 / 包裹）
+  replacement: '...',  // 纯文本或 $1/$2 捕获组引用
+  scope: 'narrative', // 'narrative'=渲染前 | 'extract'=token提取前
+  flags: 'gi',        // 可选，默认 'g'
+}
+```
+
+**候补规则（待真实游戏测试后确认）**：
+- `<recap>...</recap>` — 部分游戏用于内部总结，不应展示给玩家
+- `<theater>...</theater>` — 明月秋青格式的剧场块
+- `<timeline>...</timeline>` — 时间线块
+
+### 9.4 创作者自定义规则（bundled）
+
+创作者可在游戏包内声明额外规则，随游戏导入时安装：
+
+```json
+{
+  "ui_config": {
+    "regex_profiles": [
+      {
+        "ref": "creator:my-format",
+        "bundled": true,
+        "rules": [
+          { "order": 10, "pattern": "<theater>[\\s\\S]*?</theater>", "replacement": "", "scope": "narrative", "flags": "gi" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+爱丽丝规则集（`alice:core`）始终最先加载，创作者规则的 `order` 建议从 10 起步，避免与官方规则冲突。
+
+---
+
+## 十、接下来的计划
+
+### 近期 P0（内测前）
+
+**`<choice>` C 类标签前端实现**
+
+`tokenExtract.ts` 目前只处理 A 类标签。需要扩展：
+- 识别 `<choice>...</choice>` 块，提取后从叙事文本移除，返回 `choices: string[]`
+- `TextPlayPage.handleTurnDone` 读取 `choices` 并 `setLastOptions`
+- 创作者只需在 prompt 末尾要求 AI 输出 `<choice>` 块，前端自动渲染为选项按钮
+
+**`preprocessNarrative()` 与 `splitSayBlocks()` 路径对齐**
+
+say 宏内部的 B 类标签目前走独立路径，可能漏处理。两条路径需要保持一致。
+
+### 近期 P1
+
+**主题扩展预留**
+
+内测阶段：只允许官方 6 套主题 + `color_scheme` 局部覆盖。  
+中期：`UIConfig` 增加 `custom_theme?: Partial<ThemeVars>`，允许游戏包声明完整主题，走类似 `RegexProfileRef` 的 bundled 机制。
+
+**爱丽丝规则集扩充**
+
+根据真实游戏导入测试结果，补充候补规则（见 9.3）。不要提前硬编码未经验证的规则。
+
+### 中期（内测后）
+
+- **Light 游玩页**：自制 VN 舞台，不复用 Text 的 `chat/` 组件
+- **RegexProfile 公共库**：创作者可发布规则集，游戏包引用时自动拉取安装
+- **主题包**：类似 RegexProfile 机制，允许打包完整 `ThemeVars` 随游戏分发
+
+### 已知限制
+
+- **本地 JSON 导入丢失 `ui_config`**：`MyLibraryPage` 硬编码 `ui_config: null`，测试官方标签渲染必须走后端导入
+- **`<choice>` 尚未实现**：块目前不会被提取，会原样出现在叙事文本中（下一个 P0）
+- **`preprocessNarrative` 在 `MessageBubble` 内**：如果 Light 游玩页也需要 B 类标签渲染，届时提升到 `utils/`
 
 ---
 

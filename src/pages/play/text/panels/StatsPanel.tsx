@@ -123,6 +123,7 @@ export default function StatsPanel({ sessionId, variables: variablesOverride, it
       headerHidden
       closeOnOutsideClick={false}
       closeOnPanelClick
+      draggable={false}
       onClose={onClose}
       style={style}
     >

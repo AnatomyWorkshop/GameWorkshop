@@ -4,14 +4,16 @@ interface StreamState {
   sessionId: string | null
   streaming: boolean
   buffer: string
+  pendingUserInput: string | null
   pendingMessage: string | null   // buffer preserved after stop, shown until next refetch
   streamError: string | null
   abortCtrl: AbortController | null
-  startStream: (sessionId: string) => AbortController
+  startStream: (sessionId: string, userInput: string) => AbortController
   appendDelta: (text: string) => void
   endStream: () => void
   stopStream: () => void          // user-initiated stop — preserves buffer as pendingMessage
   clearPending: () => void
+  clearPendingUserInput: () => void
   setError: (msg: string) => void
   clearError: () => void
 }
@@ -29,13 +31,14 @@ export const useStreamStore = create<StreamState>((set, get) => ({
   sessionId: null,
   streaming: false,
   buffer: '',
+  pendingUserInput: null,
   pendingMessage: null,
   streamError: null,
   abortCtrl: null,
-  startStream(sessionId) {
+  startStream(sessionId, userInput) {
     get().abortCtrl?.abort()
     const ctrl = new AbortController()
-    set({ sessionId, streaming: true, buffer: '', pendingMessage: null, streamError: null, abortCtrl: ctrl })
+    set({ sessionId, streaming: true, buffer: '', pendingUserInput: userInput, pendingMessage: null, streamError: null, abortCtrl: ctrl })
     return ctrl
   },
   appendDelta(text) {
@@ -53,6 +56,9 @@ export const useStreamStore = create<StreamState>((set, get) => ({
   },
   clearPending() {
     set({ pendingMessage: null })
+  },
+  clearPendingUserInput() {
+    set({ pendingUserInput: null })
   },
   setError(msg) {
     set({ streamError: humanizeError(msg), streaming: false, buffer: '', abortCtrl: null })
