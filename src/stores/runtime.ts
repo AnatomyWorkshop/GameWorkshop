@@ -4,6 +4,7 @@ export interface SlotRuntimeConfig {
   base_url?: string
   api_key?: string
   model_label?: string
+  enabled?: boolean
 }
 
 export interface RuntimeConfig {

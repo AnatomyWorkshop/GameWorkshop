@@ -31,15 +31,32 @@ export interface NarrativeTagItem {
 
 export interface FloatingPanelDecl {
   id: string
-  type: 'preset' | 'interactive' | 'custom'
-  preset?: 'narrative_tags' | 'phone_status' | 'character_sheet' | 'telemetry_debug'
+  type: 'preset' | 'html_panel' | 'interactive' | 'custom'
+  /** type: 'preset' — 数据展示型，Text 游玩页用 */
+  preset?: 'narrative_tags' | 'phone_status' | 'data_panel' | 'character_sheet' | 'stats' | 'tags' | 'telemetry_debug'
+  /** type: 'html_panel' — iframe 渲染原始 HTML 模板，变量注入后沙箱执行 */
+  config?: {
+    /** 指向游戏资产的 URL，如 /assets/绿茵好莱坞/down.txt */
+    template_url?: string
+    /** 变量注入策略：getAllVariables=mock JS-Slash-Runner API；raw_replace=替换 const raw = null */
+    inject_mode?: 'getAllVariables' | 'raw_replace'
+  }
   /** type: 'interactive' — Light 游玩页用，内容由前端 preset 决定 */
   interactive_preset?: 'inventory' | 'skill_tree' | 'map' | string
+  /**
+   * 面板行为预设：
+   * - peek（默认）：点面板内关闭，适合只读展示
+   * - tool：点外关闭，有 header，适合工具/调试面板
+   * - pinned：只能点显式关闭按钮，适合含交互内容的面板（如 html_panel）
+   */
+  behavior?: 'peek' | 'tool' | 'pinned'
   default_pinned?: boolean
   position?: 'top_center_bar' | 'right_stack' | 'bottom_bar' | 'free'
-  launcher: { icon: string; placement: 'topbar' | 'stage_hud' | 'none' }
-  /** phone_status / character_sheet 面板展示的变量路径列表（支持 "group.key" 嵌套路径） */
+  launcher: { icon: string; label?: string; placement: 'topbar' | 'stage_hud' | 'none' }
+  /** data_panel / phone_status / character_sheet 面板展示的变量路径列表（支持 "group.key" 嵌套路径） */
   display_vars?: string[]
+  /** 是否允许拖动定位，默认 false；位置持久化到 localStorage */
+  draggable?: boolean
 }
 
 export interface TokenExtractRule {
@@ -80,7 +97,36 @@ export interface RegexProfileRef {
   rules?: RegexRule[]
 }
 
+export interface SetupField {
+  key: string
+  label: string
+  type: 'text' | 'select'
+  required?: boolean
+  placeholder?: string
+  options?: string[]
+}
+
+export interface StatItem {
+  key: string
+  icon?: string
+  label?: string
+  /** 渲染方式：bar=进度条, badge=徽章, text=纯文本（默认） */
+  display?: 'bar' | 'badge' | 'text'
+  /** bar 模式的满值，默认 100 */
+  bar_max?: number
+  /** bar 颜色，支持 CSS 变量或 hex；未指定时 bar 模式自动按值着色（绿/黄/红） */
+  bar_color?: string
+}
+
 export interface UIConfig {
+  /** 开局配置表单字段（方案 A/B 共用） */
+  setup_fields?: SetupField[]
+  /** 开局配置弹窗标题，默认 "开局配置" */
+  setup_form_title?: string
+  /** 开局消息头部标识，默认 "[开局配置]" */
+  setup_message_header?: string
+  /** 开局确认按钮文字，默认 "开始游戏" */
+  setup_confirm_label?: string
   theme_preset?: 'default-dark' | 'gothic' | 'soft-fantasy' | 'cyberpunk' | 'parchment' | 'minimal'
   layout_preset?: 'novel-column' | 'full-bleed' | 'chat-card'
   component_skin?: 'minimal-chrome' | 'glass-ornament'
@@ -90,7 +136,7 @@ export interface UIConfig {
   subtitle?: string
   first_options?: string[]
   stats_bar?: {
-    items?: Array<{ key: string; icon?: string; label?: string }>
+    items?: StatItem[]
   }
   color_scheme?: {
     bg?: string

@@ -15,7 +15,6 @@ interface Props {
   componentSkin?: 'minimal-chrome' | 'glass-ornament'
   characters?: Record<string, { avatar_url: string; color?: string }>
   avatarMode?: 'none' | 'script'
-  choiceColumns?: number
   floorId?: string
   sessionId?: string
   /** Floor 创建时间 ISO string */
@@ -212,7 +211,7 @@ function MoreMenu({ onForkFromFloor, onDelete, onTranslate, onCopy, onEdit }: Mo
 
   return (
     <span ref={ref} className="inline-flex items-center gap-1">
-      <MiniAction icon={<Paintbrush size={14} />} title="Generate Image" disabled />
+      <MiniAction icon={<Pencil size={14} />} title="Edit" onClick={onEdit ? () => { onEdit(); setOpen(false) } : undefined} disabled={!onEdit} />
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen(v => !v) }}
@@ -228,9 +227,9 @@ function MoreMenu({ onForkFromFloor, onDelete, onTranslate, onCopy, onEdit }: Mo
         <span className="inline-flex items-center gap-1">
           <MiniAction icon={<GitBranch size={14} />} title="New Branch" onClick={onForkFromFloor ? () => { onForkFromFloor(); setOpen(false) } : undefined} disabled={!onForkFromFloor} />
           <MiniAction icon={<Copy size={14} />} title="Copy" onClick={onCopy ? () => { onCopy(); setOpen(false) } : undefined} disabled={!onCopy} />
-          <MiniAction icon={<Pencil size={14} />} title="Edit" onClick={onEdit ? () => { onEdit(); setOpen(false) } : undefined} disabled={!onEdit} />
           <MiniAction icon={<Languages size={14} />} title="Translate message" onClick={onTranslate ? () => { onTranslate(); setOpen(false) } : undefined} disabled={!onTranslate} />
           <MiniAction icon={<Volume2 size={14} />} title="Narrate" disabled />
+          <MiniAction icon={<Paintbrush size={14} />} title="Generate Image" disabled />
           <MiniAction icon={<Flag size={14} />} title="Bookmark" disabled />
           {onDelete ? (
             <MiniAction icon={<Trash2 size={14} />} title="Delete" danger onClick={() => { onDelete(); setOpen(false) }} />
@@ -346,7 +345,6 @@ export default function MessageBubble({
   messageStyle = 'prose',
   characters,
   avatarMode = 'none',
-  choiceColumns,
   floorId,
   sessionId,
   createdAt,
@@ -415,11 +413,25 @@ export default function MessageBubble({
         onTranslate={!isUser && sessionId ? handleTranslate : undefined}
         onForkFromFloor={!isUser && floorId && sessionId ? () => onForkFromFloor?.(floorId) : undefined}
         onCopy={async () => {
+          const text = isUser ? message.content : processedContent
           try {
-            await navigator.clipboard.writeText(message.content)
+            await navigator.clipboard.writeText(text)
             toast.success('Copied!')
           } catch {
-            toast.error('复制失败')
+            // fallback for non-secure context
+            try {
+              const ta = document.createElement('textarea')
+              ta.value = text
+              ta.style.position = 'fixed'
+              ta.style.opacity = '0'
+              document.body.appendChild(ta)
+              ta.select()
+              document.execCommand('copy')
+              document.body.removeChild(ta)
+              toast.success('Copied!')
+            } catch {
+              toast.error('复制失败')
+            }
           }
         }}
       />
@@ -545,11 +557,11 @@ export default function MessageBubble({
             )
           })}
           {showInlineChoices && (
-            <div className={choiceColumns === 3 ? 'grid grid-cols-3 gap-2 pt-2' : 'flex flex-wrap gap-2 pt-2'}>
+            <div className="flex flex-col gap-2 pt-2">
               {choices!.map((c) => (
                 <button
                   key={c}
-                  className={choiceColumns === 3 ? 'w-full px-3 py-2 text-sm transition-colors rounded-lg border text-center' : 'px-3 py-1 text-sm transition-colors rounded-full border'}
+                  className="w-full px-3 py-2 text-sm transition-colors rounded-lg border text-left"
                   style={{
                     borderColor: 'var(--color-accent)',
                     color: 'var(--color-accent)',

@@ -182,16 +182,15 @@ AI 原始输出
 
 ## 四、组件架构
 
-### 4.1 当前结构（迁移后）
+### 4.1 当前结构（2026-04-17）
 
 ```
 src/
-├── api/                        # API 类型 + 请求函数
+├── api/                        # API 类型 + 请求函数（含 StatItem 等声明式类型）
 ├── components/                 # 跨页面共享组件
-│   ├── chat/                   # MessageBubble, MessageList, ChatInput, StreamingBubble
 │   ├── game/                   # GameCard, HeroSection, StatsBar, ActionBar
 │   ├── layout/                 # AppLayout
-│   ├── overlay/                # FloatingPanel, Popover
+│   ├── overlay/                # Popover（FloatingPanel 已迁移到 panels/）
 │   └── social/                 # CommentCore
 ├── pages/
 │   ├── game/
@@ -200,25 +199,34 @@ src/
 │   └── play/
 │       └── text/               # Text 游玩页（自包含）
 │           ├── TextPlayPage.tsx
+│           ├── chat/           # ChatInput, MessageBubble, MessageList, StreamingBubble
 │           ├── components/
 │           │   ├── TextPlayTopBar.tsx
-│           │   └── PanelSwitcherMenu.tsx  ← 从 features/ 移入
+│           │   └── PanelSwitcherMenu.tsx
 │           ├── hooks/
 │           │   └── usePanels.ts
-│           └── panels/
-│               ├── PanelsHost.tsx
-│               ├── StatsPanel.tsx
-│               ├── TagsPanel.tsx
-│               ├── panelLayout.ts
-│               └── presets/    ← 从 components/play/presets/ 移入
-│                   ├── CharacterSheet.tsx
-│                   ├── PhoneStatus.tsx
-│                   └── TelemetryDebug.tsx
+│           └── panels/         # 悬浮面板系统（自包含）
+│               ├── index.ts            # 统一导出 + 新增 preset 指引
+│               ├── FloatingPanel.tsx   # 通用外壳（behavior: peek/tool/pinned）
+│               ├── PanelsHost.tsx      # 路由宿主，读取 floating_panels 声明
+│               ├── panelLayout.ts      # 定位常量
+│               ├── hooks/
+│               │   └── useDraggable.ts # 拖动 hook（PointerEvent + localStorage）
+│               ├── presets/            # 官方内置 preset（无游戏耦合）
+│               │   ├── StatsPanel.tsx
+│               │   ├── TagsPanel.tsx
+│               │   ├── CharacterSheet.tsx
+│               │   ├── TelemetryDebug.tsx
+│               │   └── HtmlPanel.tsx
+│               └── gamePresets/        # 游戏专属 preset（有游戏名耦合）
+│                   ├── DataPanel_绿茵好莱坞.tsx
+│                   └── SetupFormModal.tsx
 ├── queries/
 ├── stores/
 ├── styles/
 └── utils/
-    └── tokenExtract.ts
+    ├── tokenExtract.ts     # A/C 类标签提取（extractTokens, extractChoiceOptions）
+    └── regexPipeline.ts    # 爱丽丝规则集 + 管线执行器（runRegexPipeline）
 ```
 
 **原则**：`components/` 只放真正跨页面复用的组件。页面专属的组件、面板、preset 全部放在对应页面目录下，自包含。
@@ -267,7 +275,7 @@ Light 游玩页的浮窗需要**交互型**支持：
 
 ### 5.3 可扩展的 FloatingPanelDecl 类型设计
 
-当前 `FloatingPanelDecl` 只支持 `type: "preset"`。为了支持 Light 游玩页的交互型浮窗，需要扩展类型：
+当前 `FloatingPanelDecl` 只支持 `type: "preset"`。为了支持 `html_panel` 和未来 Light 游玩页的交互型浮窗，需要扩展类型：
 
 ```typescript
 // 当前（Text 游玩页）
@@ -280,22 +288,55 @@ interface FloatingPanelDecl {
   launcher: { icon: string; placement: 'topbar' }
 }
 
-// 扩展后（支持 Light 游玩页）
+// 扩展后
 interface FloatingPanelDecl {
   id: string
-  type: 'preset' | 'interactive' | 'custom'
+  type: 'preset' | 'html_panel' | 'interactive' | 'custom'
   // type: 'preset' — 数据展示型，Text 游玩页用
   preset?: 'narrative_tags' | 'phone_status' | 'character_sheet' | 'telemetry_debug'
+  // type: 'html_panel' — iframe 渲染原始 HTML 模板（如 down.txt），变量注入后沙箱执行
+  config?: {
+    template_url?: string   // 指向游戏资产的 URL，如 /assets/绿茵好莱坞/down.txt
+    inject_mode?: 'getAllVariables' | 'raw_replace'  // 变量注入策略
+  }
   // type: 'interactive' — 交互型，Light 游玩页用，内容由前端 preset 决定
   interactive_preset?: 'inventory' | 'skill_tree' | 'map' | string
   // type: 'custom' — 创作者自定义（未来，需沙箱）
+  behavior?: 'peek' | 'tool' | 'pinned'  // 见 5.3.1
   default_pinned?: boolean
   position?: 'top_center_bar' | 'right_stack' | 'bottom_bar' | 'free'
-  launcher: { icon: string; placement: 'topbar' | 'stage_hud' | 'none' }
+  launcher: { icon: string; label?: string; placement: 'topbar' | 'stage_hud' | 'none' }
 }
 ```
 
-**v0 阶段**：只实现 `type: 'preset'`，`interactive` 和 `custom` 留空接口，Light 开发时填充。
+**v0 阶段**：实现 `type: 'preset'` 和 `type: 'html_panel'`，`interactive` 和 `custom` 留空接口，Light 开发时填充。
+
+### 5.3.1 面板行为预设（behavior）
+
+把 `closeOnPanelClick` / `closeOnOutsideClick` / `headerHidden` 等布尔值收敛为三种行为预设：
+
+| behavior | 关闭手势 | header | 适用场景 |
+|----------|----------|--------|----------|
+| `peek`（默认） | 点面板内关闭，点外不关 | 隐藏 | 只读展示型，快速查看后收起 |
+| `tool` | 点外关闭，点内不关 | 显示 | 工具/设置/调试面板，防误触 |
+| `pinned` | 只能点显式关闭按钮 | 显示 | 需要持续交互的面板（如 html_panel） |
+
+`html_panel` 默认使用 `behavior: 'pinned'`，因为它包含可交互内容（手风琴展开/折叠），不能误触关闭。
+
+### 5.3.2 TopBar 图标按钮栏
+
+`launcher.placement === 'topbar'` 的面板在 TopBar 右侧渲染为纯图标按钮（无文字标签）：
+
+```
+TopBar 右侧：  ← 返回  |  游戏名  |  [图标1] [图标2] [···]
+                                        ↑ 每个 topbar 面板一个按钮
+```
+
+实现要点：
+- `TextPlayPage` 将 `panelStates` + `onTogglePanel(id)` 同时传给 `TextPlayTopBar` 和 `PanelsHost`
+- `TextPlayTopBar` 遍历 `topbarPanels`，渲染 `<button>` + `panel.launcher.icon`
+- 激活状态：`panelStates[panel.id] === true` 时按钮高亮（`active` class）
+- 原有的 📖/📊/🗂/··· 固定按钮保留，topbar 面板按钮插入其左侧
 
 ### 5.4 PanelSwitcherMenu 的可扩展性
 
@@ -500,7 +541,7 @@ v0/v1 阶段强烈不建议。原因：
 - `behavior: 'tool'`（点外关闭、点内不关、有 header）
 - `behavior: 'pinned'`（都不自动关闭，只能点显式按钮关闭）
 
-这样 `FloatingPanelDecl` 的声明就可以从“列一堆布尔值”变成“选一个行为 preset + 少量覆写”，可维护性会更好。
+这样 `FloatingPanelDecl` 的声明就可以从”列一堆布尔值”变成”选一个行为 preset + 少量覆写”，可维护性会更好。
 - **GW 用 preset 渲染**（phone_status / telemetry_debug / character_sheet）
 - **可选的 Light/VNRenderer** 在舞台层承载更丰富的画面与 HUD
 
@@ -508,7 +549,79 @@ v0/v1 阶段强烈不建议。原因：
 - “小手机面板的视觉形态”现在就能做：用 `floating_panels` + `preset: phone_status`，并用 token/变量填充内容。  
 - “MVU 变量严格更新”在 WE 层能做：用 `<UpdateVariable>` / JSONPatch 规则、后端校验与落库。  
 - “脚本注入 HTML + 任意 DOM 能力”不会支持：用 preset + 声明式组件替代。  
-- 音乐/播放列表/跨回合持久音频：可作为 GW 的官方组件（例如 `AudioPlayerHUD`）逐步补齐，但仍是“声明式引用”，不是脚本执行。
+- 音乐/播放列表/跨回合持久音频：可作为 GW 的官方组件（例如 `AudioPlayerHUD`）逐步补齐，但仍是”声明式引用”，不是脚本执行。
+
+### 8.3 P2 阶段：FloatingPanel 重构方向
+
+**当前问题**
+
+`behavior` 预设目前只在 `PanelsHost.behaviorProps()` 里转换为布尔 props，`FloatingPanel` 组件本身仍然接受散装的 `closeOnPanelClick` / `closeOnOutsideClick` / `headerHidden`。这带来两个问题：
+
+1. **可交互面板的 bug 风险**：`PhoneStatus` 多 Tab 扩展后，Tab 按钮点击会冒泡到面板根节点，触发 `closeOnPanelClick` 关闭。当前 `peek` 行为（点内关闭）与可交互内容天然冲突，必须在 P2 前解决。
+
+2. **逻辑分散**：`behavior` 的语义在 `PanelsHost` 里，`FloatingPanel` 不知道自己是什么行为，调试困难。
+
+**重构方案：`behavior` 下沉到 `FloatingPanel`**
+
+```tsx
+// 重构后的 FloatingPanel props
+interface FloatingPanelProps {
+  id: string
+  title: string
+  icon?: React.ReactNode
+  onClose: () => void
+  children: React.ReactNode
+  style?: React.CSSProperties
+  className?: string
+  /**
+   * 面板行为预设（取代散装布尔值）：
+   * - peek：无 header，点面板内任意位置关闭。适合只读快速查看（character_sheet、phone_status 旧版）
+   * - tool：有 header + 关闭按钮，点面板外关闭。适合工具/调试面板（telemetry_debug）
+   * - pinned：有 header + 关闭按钮，只能点 × 关闭。适合含交互内容的面板（PhoneStatus 多 Tab、html_panel）
+   */
+  behavior?: 'peek' | 'tool' | 'pinned'
+  draggable?: boolean
+  // 以下 props 保留向后兼容，behavior 优先
+  titleHidden?: boolean
+  closeOnOutsideClick?: boolean
+  headerHidden?: boolean
+  closeOnPanelClick?: boolean
+}
+```
+
+内部推导逻辑：
+
+```tsx
+const resolvedBehavior = behavior ?? (
+  closeOnPanelClick ? 'peek' :
+  closeOnOutsideClick ? 'tool' :
+  'pinned'
+)
+const showHeader = resolvedBehavior !== 'peek'
+const clickInsideCloses = resolvedBehavior === 'peek'
+const clickOutsideCloses = resolvedBehavior === 'tool'
+```
+
+**`peek` 行为的点击关闭需要精确化**
+
+当前 `closeOnPanelClick` 是在根节点 `onClick` 上触发，任何子元素点击都会冒泡关闭。重构后 `peek` 行为应改为：只在点击**面板背景**（根节点本身，非子元素）时关闭，避免误触内部文字选中等操作：
+
+```tsx
+// 根节点 onClick 改为：
+onClick={(e) => {
+  if (clickInsideCloses && e.target === e.currentTarget) onClose()
+}}
+```
+
+**`PanelsHost` 简化**
+
+重构后 `PanelsHost` 里的 `behaviorProps()` 函数可以删除，直接传 `behavior` 给 `FloatingPanel`：
+
+```tsx
+<FloatingPanel behavior={p.behavior ?? (p.type === 'html_panel' ? 'pinned' : 'peek')} ...>
+```
+
+**实施时机**：在 `PhoneStatus` 多 Tab 扩展之前完成，否则 Tab 点击会触发面板关闭。
 
 ---
 
@@ -604,6 +717,61 @@ TopBar ⧉ 按钮打开存档列表，支持切换/新建/删除存档。
 - [x] `MessageBubble` 接入 `runRegexPipeline`（渲染前跑爱丽丝规则集）
 - [x] `TextPlayPage.handleTurnDone` 接入 `runRegexPipeline`（token 提取前跑 extract 规则）
 
+### 阶段 B.6：绿茵好莱坞前端改造（P1，当前阶段）
+
+> 对应 `inspiration/绿茵好莱坞-改造方案.md` 第七节任务清单。
+
+- [x] **`FloatingPanelDecl` 类型扩展**（`api/types.ts`）
+  - 新增 `type: 'html_panel'`，`config.template_url`，`config.inject_mode`
+  - 新增 `behavior: 'peek' | 'tool' | 'pinned'`，`launcher.label`
+- [x] **爱丽丝规则集重构**（`regexPipeline.ts`）
+  - `alice:core`（order 1-19）：只保留平台通用规则，不含游戏专属标签
+  - 新增 `alice:extended`（order 20-39）：通用扩展标签，游戏按需引用
+  - `stat-up` / `stat-down` / `result-card` / `media-quote` 移入 `alice:extended`
+- [x] **CSS 扩展**（`globals.css`）
+  - `alice:core` 区块：现有 `gw-em-*` / `gw-aside` / `gw-quote`
+  - `alice:extended` 区块：`gw-em-stat-up` / `gw-em-stat-down` / `gw-result-card` / `gw-media-quote`，含扩展注释
+- [x] **F22 StatsPanel 进度条扩展**（`StatsPanel.tsx`）
+  - `shouldShowBar()` 函数：`group === '核心能力'` / `'体能'` / `'竞技状态'` 自动渲染进度条
+  - `fifaColor()` 函数：≥80 绿 / ≥60 黄 / <60 红
+- [x] **TopBar 图标按钮栏**（`TextPlayTopBar.tsx`）
+  - `launcher.placement === 'topbar'` 的面板渲染为纯图标按钮，插入固定按钮左侧
+  - 激活状态高亮（`color-accent`）
+- [x] **`HtmlPanel.tsx` 新建**（`pages/play/text/panels/presets/HtmlPanel.tsx`）
+  - `getAllVariables` 模式：注入 mock JS-Slash-Runner API（绿茵好莱坞 down.txt）
+  - `raw_replace` 模式：替换 `const raw = null;`（美高之路）
+  - `key={hashVars}` 强制重建，等 `streamDone` 后渲染
+- [x] **`PanelsHost` 扩展**（`PanelsHost.tsx`）
+  - `behaviorProps()` 函数：将 `behavior` 预设转为 FloatingPanel 布尔 props
+  - 新增 `html_panel` 路由，传入 `streamDone`
+  - 移除旧的 preset 硬编码 behavior 逻辑
+- [x] **`TextPlayPage` 传入 `streamDone`**（`TextPlayPage.tsx`）
+  - 两处 `PanelsHost` 均传入 `streamDone={!streaming}`
+
+### 待完成（P2）
+
+**前置：FloatingPanel 重构（✅ 已完成）**
+
+- [x] `FloatingPanel.tsx`：新增 `behavior` prop，内部推导 `showHeader` / `bgClickCloses` / `outsideClickCloses`
+  - `peek`：无 header，`onClick` 只在 `e.target === e.currentTarget` 时关闭（背景点击，不响应子元素冒泡）
+  - `tool`：有 header，`mousedown` 监听外部点击关闭
+  - `pinned`：有 header，只有 × 按钮能关闭（× 按钮加了 `e.stopPropagation()`）
+  - 旧版散装 props（`closeOnPanelClick` / `closeOnOutsideClick` / `headerHidden`）保留并标记 `@deprecated`，向后兼容推导逻辑：`closeOnPanelClick → peek`，`closeOnOutsideClick → tool`，否则 `pinned`
+  - `canDrag = draggable && showHeader`，`peek` 行为无 header 时自动禁用拖拽
+- [x] `PanelsHost.tsx`：删除 `behaviorProps()` 转换函数，改为 `resolveBehavior()` 直接返回 `behavior` 字符串传给 `FloatingPanel`
+  - 默认规则：`html_panel → pinned`，`telemetry_debug → tool`，其余 `peek`
+
+**功能扩展（FloatingPanel 重构完成后）**
+
+- [x] `PhoneStatus_绿茵好莱坞.tsx`：4-Tab 布局（档案/履历/人脉/足坛），`behavior: 'pinned'`
+  - 档案 Tab：`display_vars` 指定变量 + 基本信息/竞技能力/核心能力三组 KV
+  - 履历 Tab：俱乐部现状 + 生涯记录
+  - 人脉 Tab：`社交关系` 对象，好感度 + 亲密状态
+  - 足坛 Tab：`足坛动态` 对象，发布者/时间/内容/点赞数
+  - 文件命名加游戏标识（见 8.4 节扩展设计说明）
+- [x] `game.json` 补充 `preset_entries` 叙事标签指令（`order: 1`，告知 AI 何时输出 stat-up/stat-down/result-card/media-quote）
+- [x] 绿茵好莱坞 `game.json`：`regex_profiles: [{ ref: "alice:extended" }]`，`html_panel` 面板（down.txt），panel `behavior`/`label` 字段补全，JSONPatch 冲突条目 `enabled: false`
+
 ### 阶段 C：后端 token 提取（官方标签稳定后，可选）
 
 - [ ] `StreamMeta` 加 `Tokens []NarrativeToken` 字段
@@ -618,34 +786,117 @@ TopBar ⧉ 按钮打开存档列表，支持切换/新建/删除存档。
 
 ---
 
-## 八、当前前端架构状态（2026-04-15）
+## 八、当前前端架构状态（2026-04-17）
+
+> 详细目录结构见第四节 4.1。
+
+架构要点：
+- `panelRegistry.ts` 和 `gamePresets/index.ts`（注册表）已删除，`PanelsHost` 改为直接 import
+- `FloatingPanel` 已从 `components/overlay/` 迁移到 `panels/FloatingPanel.tsx`，`behavior` 下沉到组件内部
+- `StatsPanel` / `TagsPanel` 已从 `panels/` 根目录移入 `panels/presets/`
+- `preprocessNarrative()` 已移除，B 类标签转换统一走 `runRegexPipeline('narrative')`
+- `StatItem` 类型已扩展（`display` / `bar_max` / `bar_color`），`StatsPanel` 去除硬编码逻辑
+
+---
+
+### 8.4 浮窗面板扩展设计
+
+#### 当前架构（已实现）
+
+面板系统分两层：
+
+**平台内置 preset**（`presets/` 目录，`PanelsHost` 直接 import）
+- `character_sheet`：通用角色属性展示，任何游戏可用
+- `telemetry_debug`：调试工具，显示 token 用量等
+- `html_panel`：iframe 沙箱渲染，游戏自带 HTML 文件
+
+**游戏专属 preset**（`gamePresets/` 目录，通过注册表解耦）
+- `PanelsHost` 只 import `panelRegistry`，不感知具体游戏
+- 游戏面板在 `gamePresets/index.ts` 里注册，`PanelsHost` 永远不动
+- 新增游戏面板：创建 `ComponentName_游戏slug.tsx` → 在 `index.ts` 加一行 `registerPreset`
 
 ```
-src/
-├── api/                    # 类型 + 请求函数（通用）
-├── components/             # 真正跨页面共享的组件
-│   ├── game/               GameCard, HeroSection, StatsBar, ActionBar
-│   ├── layout/             AppLayout
-│   ├── overlay/            FloatingPanel, Popover
-│   └── social/             CommentCore
-├── pages/
-│   ├── game/               游戏详情页
-│   ├── my-library/         我的库
-│   ├── public-library/     公共库
-│   └── play/
-│       └── text/           Text 游玩页（自包含）
-│           ├── TextPlayPage.tsx
-│           ├── chat/       ChatInput, MessageBubble, MessageList, StreamingBubble
-│           ├── components/ TextPlayTopBar, PanelSwitcherMenu
-│           ├── hooks/      usePanels
-│           └── panels/     PanelsHost, StatsPanel, TagsPanel, presets/
-├── queries/                React Query hooks（通用）
-├── stores/                 Zustand stores（通用）
-├── styles/                 themes.ts, globals.css
-└── utils/
-    ├── tokenExtract.ts     A/C 类标签提取
-    └── regexPipeline.ts    爱丽丝规则集 + 管线执行器
+panels/
+  panelRegistry.ts              ← Map + registerPreset / getPreset
+  PanelsHost.tsx                ← import './gamePresets'（副作用触发注册）
+  presets/                      ← 平台内置，PanelsHost 直接 import
+  │  CharacterSheet.tsx
+  │  TelemetryDebug.tsx
+  │  HtmlPanel.tsx
+  gamePresets/                  ← 游戏专属，唯一需要维护的地方
+     index.ts                   ← registerPreset('phone_status', ...)
+     PhoneStatus_绿茵好莱坞.tsx
 ```
+
+#### 关于"游戏包自带面板"的可行性判断
+
+**为什么不做运行时动态 TSX 加载**
+
+游戏包里放 `.tsx` 源码需要在浏览器里运行编译器，不可行。放预编译 ESM bundle 技术上可行（`import(url)`），但有三个硬问题：
+
+1. React 多实例：游戏 bundle 里的 React 和平台的 React 是两份，hooks 会报错。需要 import map 或 module federation 解决，维护成本高。
+2. 平台升级风险：每次平台升级 React 版本，所有游戏预编译 bundle 可能失效。
+3. 游戏创作者门槛：需要自己跑构建工具，externalize 依赖，这对非开发者不现实。
+
+**`html_panel` 已经是"游戏包自带面板"的正确答案**
+
+游戏包里放一个 HTML 文件（如 `down.txt`），平台注入变量，iframe 沙箱执行。游戏创作者完全控制 UI，不需要任何构建工具，兼容 SillyTavern 生态的现有卡片。这覆盖了"游戏包自带面板"需求的 80%。
+
+`html_panel` 当前的限制：
+- 每次变量变化重建 iframe，内部状态丢失（Tab 选中、滚动位置等）
+- 无法访问平台主题色变量（`--color-accent` 等 CSS 变量在 iframe 内不继承）
+- 高度固定（560px），不能自适应内容
+
+#### 扩展路线图
+
+**近期（当前阶段）：静态注册表 + html_panel**
+
+现状已满足需求。游戏专属 TSX 面板通过 `gamePresets/index.ts` 注册，`html_panel` 覆盖零代码场景。
+
+**中期：增强 html_panel 通信能力**
+
+给 iframe 加 `postMessage` 通信桥，解决状态丢失问题：
+
+```
+平台 → iframe：{ type: 'gw:vars_update', variables: {...} }
+iframe → 平台：{ type: 'gw:resize', height: 420 }（自适应高度）
+```
+
+这样变量更新时不重建 iframe，内部状态保留，且 iframe 可以主动上报所需高度。同时注入平台主题色到 iframe 的 CSS 变量，让 HTML 面板能跟随主题。
+
+**中期：数据驱动 preset（`data_driven`）**
+
+在 `game.json` 里声明 Tab 结构和变量映射，平台提供通用渲染引擎，游戏不写任何代码：
+
+```jsonc
+{
+  "id": "phone",
+  "preset": "data_driven",
+  "tabs": [
+    {
+      "id": "profile", "label": "档案",
+      "groups": [
+        { "title": "基本信息", "prefix": "基本信息" },
+        { "title": "竞技能力", "prefix": "竞技能力", "exclude": ["竞技能力.核心能力"] }
+      ]
+    },
+    { "id": "news", "label": "动态", "type": "news_feed", "var": "足坛动态" },
+    { "id": "network", "label": "人脉", "type": "relation_map", "var": "社交关系" }
+  ]
+}
+```
+
+平台内置几种 Tab 类型（`kv_groups`、`news_feed`、`relation_map`、`progress_bars`），覆盖大多数游戏的数据展示需求。游戏创作者只需要声明数据结构，不需要写 HTML 或 TSX。
+
+**远期：WE 引擎能力对齐**
+
+WE 引擎（SillyTavern 生态）的核心能力是：游戏包携带完整的 JS 逻辑，在沙箱里执行，通过标准 API 与宿主通信。GW 的对应方向是：
+
+- `html_panel` + postMessage 桥 = WE 的 iframe 扩展模式
+- `data_driven` preset = WE 的声明式 UI 模式
+- `gamePresets/` 注册表 = WE 的插件注册模式（平台开发者用）
+
+三条路并行，游戏创作者按能力选择：零代码用 `data_driven`，有 HTML 能力用 `html_panel`，需要深度集成找平台开发者加 `gamePresets`。
 
 ---
 
@@ -666,12 +917,30 @@ AI 原始输出
 
 ### 9.2 当前规则表
 
-规则定义在 `src/utils/regexPipeline.ts` 的 `ALICE_CORE_RULES` 数组，按 `order` 升序执行。
+规则定义在 `src/utils/regexPipeline.ts`，按 `order` 升序执行。
+
+**alice:core（所有游戏默认启用）**
 
 | order | 规则说明 | pattern | replacement | scope |
 |---|---|---|---|---|
 | 1 | 移除 CoT 思考块 | `<thinking>[\s\S]*?</thinking>` | `""` | narrative |
 | 2 | 剥离 content 包裹 | `<content>([\s\S]*?)</content>` | `"$1"` | narrative |
+| 3 | 移除 choice 块 | `<choice>[\s\S]*?</choice>` | `""` | narrative |
+| 10 | `<em class="gold">` → 金色强调 | — | `gw-em-gold` | narrative |
+| 11 | `<em class="danger">` → 红色警告 | — | `gw-em-danger` | narrative |
+| 12 | `<em class="info">` → 蓝色提示 | — | `gw-em-info` | narrative |
+| 13 | `<aside>` → 旁白块 | — | `gw-aside` | narrative |
+| 14 | `<quote>` → 引用块 | — | `gw-quote` | narrative |
+
+**alice:extended（游戏按需引用：`{ ref: "alice:extended" }`）**
+
+| order | 规则说明 | pattern | replacement | scope |
+|---|---|---|---|---|
+| 20 | `<em class="stat-up">` → 数值提升（绿） | — | `gw-em-stat-up` | narrative |
+| 21 | `<em class="stat-down">` → 数值下降（红） | — | `gw-em-stat-down` | narrative |
+| 22 | `<result-card>` → 结果卡片 | — | `gw-result-card` | narrative |
+| 23 | `<media-quote>` → 媒体引用块 | — | `gw-media-quote` | narrative |
+| 24-39 | 预留 | — | — | — |
 
 ### 9.3 扩充规则指南
 
@@ -716,103 +985,366 @@ AI 原始输出
 
 ---
 
-## 十、接下来的计划
+## 十、计划归档与接下来的方向
 
-### 近期 P0（内测前）
+### 已完成（2026-04-17 归档）
 
-**`<choice>` C 类标签前端实现**
+**P0 已完成项**
+- ✅ `<choice>` C 类标签前端实现：`extractChoiceOptions()` 已在 `tokenExtract.ts` 实现，`handleTurnDone` 读取并 `setLastOptions`，选项纵向渲染为按钮
+- ✅ `choiceColumns` 布局参数已移除，选项固定纵向排列，不再依赖 `ui_config` 声明
+- ✅ `runRegexPipeline` 统一管线：`preprocessNarrative()` 已移除，B 类标签转换全部走 `alice:core`，`splitSayBlocks` 路径对齐
 
-`tokenExtract.ts` 目前只处理 A 类标签。需要扩展：
-- 识别 `<choice>...</choice>` 块，提取后从叙事文本移除，返回 `choices: string[]`
-- `TextPlayPage.handleTurnDone` 读取 `choices` 并 `setLastOptions`
-- 创作者只需在 prompt 末尾要求 AI 输出 `<choice>` 块，前端自动渲染为选项按钮
-
-**`preprocessNarrative()` 与 `splitSayBlocks()` 路径对齐**
-
-say 宏内部的 B 类标签目前走独立路径，可能漏处理。两条路径需要保持一致。
-
-### 近期 P1
-
-**主题扩展预留**
-
-内测阶段：只允许官方 6 套主题 + `color_scheme` 局部覆盖。  
-中期：`UIConfig` 增加 `custom_theme?: Partial<ThemeVars>`，允许游戏包声明完整主题，走类似 `RegexProfileRef` 的 bundled 机制。
-
-**爱丽丝规则集扩充**
-
-根据真实游戏导入测试结果，补充候补规则（见 9.3）。不要提前硬编码未经验证的规则。
-
-### 中期（内测后）
-
-- **Light 游玩页**：自制 VN 舞台，不复用 Text 的 `chat/` 组件
-- **RegexProfile 公共库**：创作者可发布规则集，游戏包引用时自动拉取安装
-- **主题包**：类似 RegexProfile 机制，允许打包完整 `ThemeVars` 随游戏分发
-
-### 已知限制
-
-- **本地 JSON 导入丢失 `ui_config`**：`MyLibraryPage` 硬编码 `ui_config: null`，测试官方标签渲染必须走后端导入
-- **`<choice>` 尚未实现**：块目前不会被提取，会原样出现在叙事文本中（下一个 P0）
-- **`preprocessNarrative` 在 `MessageBubble` 内**：如果 Light 游玩页也需要 B 类标签渲染，届时提升到 `utils/`
+**架构已完成项**
+- ✅ `FloatingPanel` 迁移到 `panels/`，`behavior` 下沉到组件内部
+- ✅ `StatsPanel` / `TagsPanel` 移入 `panels/presets/`，`StatItem` 类型声明式扩展（`display` / `bar_max` / `bar_color`）
+- ✅ `runtimeCfg` 响应式：`gw:runtime` 事件桥接 TopBar 保存 → TextPlayPage 更新
+- ✅ 错误信息人性化：DeepSeek 401 / 429 / concurrent_generation 等场景有明确提示
+- ✅ `onTurnDone` 先于 `endStream` 执行，避免 floors 更新前 buffer 已清的空白帧
 
 ---
 
-## 七、创作者快速参考
+### 接下来的计划（2026-04-17）
 
-### 最小配置（时间/地点标签条）
+#### P0：前后端验证闭环（当前阶段）
 
-`system_prompt` 末尾追加：
-```
-每次回复开头必须输出：
-<time>当前游戏内时间</time>
-<location>当前地点</location>
-```
+**目标**：跑通"创作配置 → 真实游玩页"的完整数据链路。
 
-`ui_config`：
-```json
-{
-  "token_extract_rules": [
-    { "tag": "time",     "placement": ["narrative_tags"] },
-    { "tag": "location", "placement": ["narrative_tags"] }
-  ],
-  "narrative_tags": {
-    "items": [
-      { "id": "time",     "source": "token", "token_type": "time",     "icon": "🕐" },
-      { "id": "location", "source": "token", "token_type": "location", "icon": "📍" }
-    ]
-  }
+1. **重新 seed 数据库**
+   - `./seed.exe --data ../data/cloud/games --force`
+   - 验证 victoria `game.json` 的 `floating_panels`（tags/stats/character）和 `stats_bar.items` 写入正确
+
+2. **前后端联调**
+   - 启动后端，导入 victoria 游戏，验证 SSE 流正常（`event: token` + `event: meta`）
+   - 验证 `<choice>` 块被正确提取并渲染为选项按钮
+   - 验证 `<UpdateState>` → `variables` → StatsPanel 更新链路
+   - 验证 DeepSeek API key + base_url 配置后能正常生成
+
+3. **已知待修复**
+   - `extract` scope 管线：`runRegexPipeline('extract')` 目前没有 `scope: 'extract'` 的规则，`<thinking>` 块在 token 提取前不会被清理。修复：在 `ALICE_CORE_RULES` 里为 order-1 规则加 `scope: 'extract'` 副本
+   - 本地 JSON 导入丢失 `ui_config`：`MyLibraryPage` 硬编码 `ui_config: null`，测试官方标签渲染必须走后端导入（短期接受此限制）
+
+#### P1：内测前补全
+
+1. **爱丽丝规则集扩充**：根据真实游戏测试结果补充候补规则（`<recap>` / `<theater>` 等），不提前硬编码未验证规则
+
+2. **主题扩展预留**：内测阶段锁定官方 6 套主题 + `color_scheme` 局部覆盖；中期再加 `custom_theme`
+
+3. **`html_panel` postMessage 桥**：变量更新时不重建 iframe，内部状态保留（Tab 选中、滚动位置）
+
+#### P2：全局模型管理（CC-Switch 式）
+
+**目标**：任何页面（包括 Text 游玩页）都能访问统一的模型配置，支持 WE 引擎多槽位独立绑定。
+
+**入口**：AppLayout 右上角齿轮按钮 → 全局 Drawer（`GlobalSettingsDrawer`）。Text 游玩页全屏在 AppLayout 外，通过 `window.dispatchEvent(new CustomEvent('gw:settings'))` 触发同一个 Drawer，Drawer 挂载在 App 根节点。
+
+**槽位设计**
+
+WE 引擎的 Agent 功能对应 4 个槽位，每个槽位独立配置 provider + key + model：
+
+| 槽位 | 用途 | 默认行为 |
+|---|---|---|
+| `narrator` | 主叙事生成（每轮对话） | 必填，fallback 到全局配置 |
+| `director` | 剧情导演（分析玩家行为、决定剧情走向） | 可选，不填则由 narrator 兼任 |
+| `verifier` | 变量校验（检查 `<UpdateState>` 合法性） | 可选，不填则跳过校验 |
+| `memory` | 记忆压缩（长对话摘要） | 可选，不填则不启用记忆压缩 |
+
+**`RuntimeConfig` 扩展**
+
+```typescript
+// stores/runtime.ts（已有 slots 字段，补充 provider 预设）
+export interface SlotRuntimeConfig {
+  base_url?: string
+  api_key?: string
+  model_label?: string
+  enabled?: boolean   // 新增：槽位是否启用（false = 由 narrator 兼任）
+}
+
+export interface RuntimeConfig {
+  base_url?: string   // 全局 fallback
+  api_key?: string
+  model_label?: string
+  slots?: Partial<Record<'narrator' | 'director' | 'verifier' | 'memory', SlotRuntimeConfig>>
 }
 ```
 
-### 内联样式（无需 ui_config 声明）
+**UI 结构（GlobalSettingsDrawer）**
 
 ```
-重要物品或人名：<em class="gold">命运之轮</em>
-危险状态：<em class="danger">生命值危急</em>
-系统提示：<aside>【系统】存档已自动保存</aside>
-引用/回忆：<quote>她曾说过：...</quote>
+GlobalSettingsDrawer（右侧 Drawer，宽 360px）
+├── 标签页：模型配置 / 关于
+└── 模型配置 Tab
+    ├── 全局配置（Fallback）
+    │   ├── Provider 预设按钮（DeepSeek / OpenAI / Gemini / Anthropic / 自定义）
+    │   ├── Base URL
+    │   ├── API Key（password input）
+    │   └── Model
+    └── 槽位配置（可折叠，默认折叠）
+        ├── narrator（叙事生成）— 始终显示
+        ├── director（剧情导演）— 可启用/禁用
+        ├── verifier（变量校验）— 可启用/禁用
+        └── memory（记忆压缩）— 可启用/禁用
+            每个槽位：启用开关 + Provider 预设 + Base URL + Key + Model
 ```
 
-B 类标签不需要在 `token_extract_rules` 里声明，`preprocessNarrative()` 自动处理。
+**Text 游玩页内的调用方式**
 
-### 手机面板（绿茵好莱坞类型）
+游玩页内每轮对话走 `narrator` 槽位（fallback 全局）。其他槽位是异步后台调用，不阻塞主叙事流：
 
-`post_history_instructions` 末尾追加：
 ```
-每次回复结尾输出：
-<status>体能:{竞技能力.当前体能} 状态:{竞技能力.竞技状态}</status>
+玩家发送消息
+    ↓
+narrator 槽位 → SSE 流式生成叙事（主链路，当前已实现）
+    ↓ 同时异步触发（不阻塞渲染）：
+    ├── director 槽位 → POST /api/play/sessions/:id/direct
+    │     分析本轮行为，更新剧情状态变量（后端异步，结果在下一轮体现）
+    ├── verifier 槽位 → POST /api/play/sessions/:id/verify
+    │     校验 <UpdateState> 的变量合法性，返回 patch 修正
+    └── memory 槽位 → 后端定时触发（每 N 轮），不由前端直接调用
 ```
 
-`ui_config`：
-```json
-{
-  "token_extract_rules": [
-    { "tag": "status", "placement": ["panel:phone"] }
-  ],
-  "floating_panels": {
-    "panels": [
-      { "id": "phone", "type": "preset", "preset": "phone_status",
-        "launcher": { "icon": "📱", "placement": "topbar" } }
-    ]
-  }
+前端调用时，`streamOpts` 按槽位分别传入：
+
+```typescript
+// TextPlayPage 构建 streamOpts
+const cfg = getRuntimeConfig()
+const narratorSlot = cfg.slots?.narrator
+const streamOpts: StreamOptions = {
+  api_key:  narratorSlot?.api_key  ?? cfg.api_key,
+  base_url: narratorSlot?.base_url ?? cfg.base_url,
+  model:    narratorSlot?.model_label ?? cfg.model_label,
+  branch_id: branchId,
 }
 ```
+
+**TopBar 模型配置入口简化**
+
+P2 完成后，TextPlayTopBar 的"当前模型"菜单项改为触发全局 Drawer（`window.dispatchEvent(new CustomEvent('gw:settings'))`），不再内嵌独立的模型配置 Drawer，消除重复实现。
+
+**实施步骤**
+
+1. `stores/runtime.ts`：`SlotRuntimeConfig` 加 `enabled` 字段
+2. 新建 `components/GlobalSettingsDrawer.tsx`：完整的多槽位配置 UI
+3. `App.tsx`：挂载 `GlobalSettingsDrawer`，监听 `gw:settings` 事件
+4. `AppLayout.tsx`：右上角加齿轮按钮，触发 `gw:settings`
+5. `TextPlayTopBar.tsx`：模型配置菜单项改为触发 `gw:settings`，删除内嵌 Drawer
+6. `TextPlayPage.tsx`：`streamOpts` 按 narrator 槽位构建（fallback 全局）
+
+#### 中期（内测后）
+
+- **Light 游玩页**：自制 VN 舞台（背景图、立绘、对话框），不复用 Text 的 `chat/` 组件
+- **`data_driven` preset**：在 `game.json` 里声明 Tab 结构和变量映射，平台提供通用渲染引擎，零代码创作
+- **变量更新优化**：`React.memo` + 浅比较，避免全量重渲染（P1 性能项）
+- **RegexProfile 公共库**：创作者可发布规则集，游戏包引用时自动拉取安装
+
+---
+
+### 创作者快速参考
+
+已拆分为独立文档：[`CREATOR-QUICKREF.md`](./CREATOR-QUICKREF.md)
+
+涵盖：最小配置、B 类内联标签、选项按钮、stats/tags/character_sheet/html_panel 面板声明、behavior 预设、主题配置、完整 floating_panels 示例。
+
+---
+
+## 十一、悬浮窗拖动实现方案
+
+> 悬浮窗的分类、preset 规范、行为预设（behavior）、声明规范等已迁移至 `TEXT-PLAY-SPEC.md` 第二章，本节专注于**可拖动（draggable）**的实现方式与适用性分析。
+
+### 11.1 实现方案对比
+
+| 方案 | 原理 | 包大小 | 适合场景 | 缺点 |
+|------|------|--------|---------|------|
+| 原生 JS（mousedown/mousemove/mouseup） | 监听鼠标事件，手动更新 `left/top` | 0 | 简单面板，无需触摸支持 | 需要自己处理边界、触摸、多指 |
+| `react-draggable` | 封装鼠标/触摸事件，提供 `<Draggable>` 包裹组件 | ~5KB | 桌面端悬浮窗 | 不维护，TypeScript 支持一般 |
+| `@use-gesture/react` + 手动定位 | hook 方式，处理鼠标/触摸/惯性 | ~10KB | 需要触摸支持的面板 | 需要自己写定位逻辑 |
+| CSS `position: fixed` + `transform: translate` | 拖动时只改 transform，不改 top/left | 0 | 性能敏感场景 | 初始位置计算稍复杂 |
+
+**推荐方案**：原生 JS + `transform: translate`，零依赖，性能好，实现约 40 行。
+
+### 11.2 实现方式（PointerEvent + localStorage）
+
+实际实现在 `panels/hooks/useDraggable.ts`，使用 `PointerEvent` + `setPointerCapture`，比 `mousedown/mousemove` 更可靠（自动处理鼠标离开窗口、触摸设备）。
+
+```tsx
+// 用法：面板根节点挂 ref + transform，拖动手柄挂 dragHandleProps
+const { ref, offset, dragHandleProps } = useDraggable({ id: 'stats', enabled: draggable })
+
+<div ref={ref} style={{ ...style, transform: `translate3d(${offset.dx}px, ${offset.dy}px, 0)` }}>
+  <div {...dragHandleProps} style={{ ...dragHandleProps.style }}>  {/* header，cursor: grab */}
+    ...
+  </div>
+</div>
+```
+
+关键点：
+- `setPointerCapture` 确保拖动过程中鼠标移出面板也能持续跟踪，无需全局 `mousemove` 监听
+- `transform: translate3d` 叠加在 `position: fixed` 的初始位置上，不触发 layout reflow
+- 位置持久化到 `localStorage`（key: `gw_panel_pos_{id}`），刷新后恢复
+- `dragHandleProps` 包含 `onPointerDown/Move/Up` + `style: { cursor: 'grab' }`，直接展开到手柄元素上
+- `enabled: false` 时 hook 返回空 props，面板行为与不拖动完全一致，无额外开销
+
+### 11.3 在 PanelsHost 中的集成方式
+
+两种集成位置：
+
+**方案 A：wrapper div 上（PanelsHost 控制）**
+```tsx
+// PanelsHost 为每个 draggable 面板包一个可拖动 wrapper
+<DraggableWrapper enabled={p.draggable} style={gameStyle(idx)}>
+  <DataPanel_绿茵好莱坞 ... />
+</DraggableWrapper>
+```
+优点：面板组件无需感知拖动逻辑，关注点分离。
+缺点：wrapper 需要知道哪个区域是拖动手柄（需要约定 `data-drag-handle`）。
+
+**方案 B：面板组件自身处理**
+面板组件自己在 header 上挂载拖动逻辑，`PanelsHost` 只传 `draggable` prop。
+优点：面板完全自主控制拖动区域和视觉反馈（cursor: grab）。
+缺点：每个面板都要实现，重复代码多。
+
+**推荐方案 A**，配合 `data-drag-handle` 约定，面板 header 区域加此属性即可启用拖动。
+
+### 11.4 是否适合 Text 游戏
+
+| 面板类型 | 拖动价值 | 建议 |
+|---------|---------|------|
+| `tags`（叙事标签条） | 低，全宽固定在 TopBar 下方，拖动无意义 | 不启用 |
+| `stats` / `character_sheet` | 中，面板较小，遮挡概率低 | 可选，默认不启用 |
+| `data_panel`（如绿茵好莱坞） | 高，560×800px 大面板，容易遮挡内容 | 建议启用 |
+| `telemetry_debug` | 低，调试用，位置固定即可 | 不启用 |
+| `html_panel` | 中，取决于内容大小 | 可选 |
+| `interactive`（规划中） | 高，交互型面板需要用户自由定位 | 启用 |
+
+**结论**：Text 游戏中，`data_panel` 类大面板最有拖动价值，其余面板默认不启用。`draggable` 作为 `FloatingPanelDecl` 的可选字段，由创作者在 game.json 中声明，默认 `false`。
+
+### 11.5 触摸支持
+
+移动端需要额外处理 `touchstart/touchmove/touchend`，逻辑与鼠标事件对称。
+Text 游戏主要面向桌面端，短期可以只实现鼠标拖动，触摸支持留到移动端适配阶段。
+
+---
+
+## 十二、面板菜单入口声明设计（2026-04-16）
+
+### 12.1 设计目标
+
+**游戏导入时决定一切**：`PanelSwitcherMenu` 下拉菜单里显示哪些入口、每个入口的图标和文字，全部由游戏的 `ui_config.floating_panels.panels` 声明，前端不硬编码任何游戏相关入口。
+
+**内置面板也走声明**：`stats`（状态栏）和 `tags`（叙事标签）不再是硬编码入口，而是通过 `preset: "stats"` / `preset: "tags"` 在 `floating_panels` 里声明，和游戏专属面板完全对等。
+
+**`placement` 控制可见性**：
+- `placement: "topbar"` — 出现在 PanelSwitcherMenu 下拉菜单中
+- `placement: "none"` — 不出现在菜单中（调试面板等）
+
+**`launcher.label` 控制文字**：菜单里显示的文字完全由 `launcher.label` 决定，游戏可以自定义（如"数据面板"、"球员档案"、"背包"等）。
+
+### 12.2 `floating_panels` 声明示例
+
+```jsonc
+// game.json ui_config.floating_panels
+{
+  "panels": [
+    {
+      "id": "data",
+      "type": "preset",
+      "preset": "data_panel",
+      "launcher": { "icon": "📊", "label": "数据面板", "placement": "topbar" }
+    },
+    {
+      "id": "stats",
+      "type": "preset",
+      "preset": "stats",
+      "launcher": { "icon": "📈", "label": "状态栏", "placement": "topbar" }
+    },
+    {
+      "id": "tags",
+      "type": "preset",
+      "preset": "tags",
+      "launcher": { "icon": "🏷", "label": "叙事标签", "placement": "topbar" }
+    },
+    {
+      "id": "debug",
+      "type": "preset",
+      "preset": "telemetry_debug",
+      "launcher": { "icon": "🔧", "label": "调试", "placement": "none" }
+    }
+  ]
+}
+```
+
+### 12.3 PanelSwitcherMenu 简化
+
+菜单只做一件事：遍历 `floatingPanels`，过滤 `placement !== 'none'`，渲染入口按钮。不再有任何硬编码的内置入口（统计、叙事标签分隔线等）。
+
+```
+PanelSwitcherMenu
+  └── floatingPanels.filter(p => p.launcher.placement !== 'none')
+       └── 每个面板一个按钮，显示 launcher.icon + launcher.label
+```
+
+### 12.4 PanelsHost 路由扩展
+
+`PanelsHost` 新增对 `preset: "stats"` 和 `preset: "tags"` 的路由，与现有 `character_sheet`、`telemetry_debug` 并列：
+
+```
+preset: "data_panel"      → 游戏注册 preset（gamePresets 注册表）
+preset: "character_sheet" → 内置 CharacterSheet
+preset: "stats"           → 内置 StatsPanel
+preset: "tags"            → 内置 TagsPanel（固定在 TopBar 下方）
+preset: "telemetry_debug" → 内置 TelemetryDebug（FloatingPanel tool 行为）
+```
+
+### 12.5 实现方式（稳定最小路径）
+
+**不违背之前设想**，这是对原有设计的自然延伸：
+
+1. **`floating_panels` 是唯一数据源**：游戏在 `game.json` 里声明所有面板，包括官方内置（`stats`、`tags`、`character_sheet`）和游戏专属（`data_panel` 等）。前端不硬编码任何面板入口。
+
+2. **PanelsHost 按 preset 名称直接路由**（不用注册表）：
+   ```
+   preset: "data_panel"      → import DataPanel_绿茵好莱坞 直接渲染
+   preset: "character_sheet" → import CharacterSheet 直接渲染
+   preset: "stats"           → import StatsPanel 直接渲染
+   preset: "tags"            → import TagsPanel 直接渲染
+   preset: "telemetry_debug" → import TelemetryDebug 直接渲染
+   ```
+   注册表（`panelRegistry`）保留但不是必须路径，直接 import 更可靠、更易调试。
+
+3. **面板数据来源**：
+   - 官方面板（stats/tags/character_sheet）：数据来自 `variables`（WE 引擎每轮更新）
+   - 游戏专属面板（data_panel）：同样来自 `variables`，组件自己解析所需字段
+   - 叙事标签（tags）：来自 `variables` 或 `tokens`（A 类标签提取）
+   - 所有面板数据随每轮 `handleTurnDone` 更新，无需额外订阅
+
+4. **面板尺寸**：组件自描述，`PanelsHost` 只提供 `position: fixed` 定位 wrapper，不强制宽高。
+
+5. **关闭**：每个面板组件自带关闭按钮，通过 `onClose` prop 回调到 `PanelsHost` → `closePanel(id)`。
+
+6. **WE 引擎集成**：变量通过 `<UpdateState>` 写入 WE 引擎 → SSE meta 事件携带 `variables` 快照 → `handleTurnDone` 调用 `setVariables` → `PanelsHost` 将最新 `variables` 传入所有面板组件 → 组件重渲染。这条链路已经完整，面板数据自动随每轮更新。
+
+### 12.6 当前问题与修复
+
+**问题 1：注册表时序不可靠**
+`panelRegistry` 依赖 `import './gamePresets'` 的副作用触发注册，在某些打包/HMR 场景下时序不保证。
+
+**修复**：PanelsHost 直接 import `DataPanel_绿茵好莱坞`，按 preset 名称 if/else 路由，不依赖注册表。
+
+**问题 2：需要重新 seed**
+game.json 里 `preset: "data_panel"` 的改动需要重新 seed 才能写入数据库。在 seed 之前，后端返回的 `ui_config` 里仍是旧数据（`preset: "phone_status"`），`getPreset('phone_status')` 返回 undefined，面板不渲染。
+
+**修复**：同时支持 `phone_status` 和 `data_panel` 两个 preset 名称路由到同一个组件，消除对 seed 时序的依赖。
+
+**问题 3：`tags` 面板的 `panelStates` 初始化**
+`TextPlayPageReal` 里 `usePanels()` 无初始状态，`tags` 面板默认关闭。TagsPanel 原来由 `panelStates['tags']` 控制，但菜单里没有 `tags` 入口（游戏未在 `floating_panels` 里声明），所以永远不会打开。
+
+**修复**：TagsPanel 改为由 `floating_panels` 声明控制，游戏在 game.json 里加 `preset: "tags"` 入口即可。
+
+### 12.7 实现状态
+
+- ✅ `placement !== 'none'` 过滤（PanelSwitcherMenu）
+- ✅ `launcher.label` 作为菜单文字
+- ✅ 无外部框架直接渲染
+- ✅ `onClose` prop 传入组件
+- ✅ PanelsHost 直接 import 替代注册表（已完成，注册表已删除）
+- ✅ `phone_status` / `data_panel` 双名称兼容（已完成）
+- ✅ `tags` / `stats` 走 `floating_panels` 声明路径（已完成）

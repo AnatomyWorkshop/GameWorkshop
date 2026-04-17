@@ -11,7 +11,6 @@ interface Props {
   componentSkin?: 'minimal-chrome' | 'glass-ornament'
   characters?: Record<string, { avatar_url: string; color?: string }>
   avatarMode?: 'none' | 'script'
-  choiceColumns?: number
   optimisticUserMessage?: string | null
   streamingBuffer: string | null
   header?: React.ReactNode
@@ -34,7 +33,7 @@ interface FlatMessage {
   isLastInFloor: boolean
 }
 
-export default function MessageList({ floors, sessionId, messageStyle = 'prose', componentSkin = 'minimal-chrome', characters, avatarMode = 'none', choiceColumns, optimisticUserMessage, streamingBuffer, header, lastOptions, regexProfiles, onChoose, onForkFromFloor, onFloorEdited, onFloorDeleted }: Props) {
+export default function MessageList({ floors, sessionId, messageStyle = 'prose', componentSkin = 'minimal-chrome', characters, avatarMode = 'none', optimisticUserMessage, streamingBuffer, header, lastOptions, regexProfiles, onChoose, onForkFromFloor, onFloorEdited, onFloorDeleted }: Props) {
   const ref = useRef<VirtuosoHandle>(null)
 
   const messages: FlatMessage[] = []
@@ -117,7 +116,6 @@ export default function MessageList({ floors, sessionId, messageStyle = 'prose',
                 onDeleted={onFloorDeleted}
                 characters={characters}
                 avatarMode={avatarMode}
-                choiceColumns={choiceColumns}
               />
             </div>
           )
@@ -136,7 +134,6 @@ export default function MessageList({ floors, sessionId, messageStyle = 'prose',
               componentSkin={componentSkin}
               characters={characters}
               avatarMode={avatarMode}
-              choiceColumns={choiceColumns}
             />
           )
         }

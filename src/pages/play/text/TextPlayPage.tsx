@@ -68,18 +68,37 @@ function TextPlayPageReal({ sessionId, onBack }: { sessionId: string; onBack: ()
   const inputMode = uiCfg?.input_mode ?? 'free'
   const placeholder = uiCfg?.input_placeholder ?? '输入你的行动…'
   const title = sessionQ.isError ? '未连接后端' : (game?.title ?? '加载中…')
-  const displayVars = uiCfg?.display_vars
   const messageStyle: 'prose' = 'prose'
-  
-  const runtimeCfg = getRuntimeConfig()
+
+  // runtimeCfg 放进 state，保存配置后通过 gw:runtime 事件触发更新
+  const [runtimeCfg, setRuntimeCfg] = useState(getRuntimeConfig)
+  useEffect(() => {
+    function onRuntimeChange() { setRuntimeCfg(getRuntimeConfig()) }
+    window.addEventListener('gw:runtime', onRuntimeChange)
+    return () => window.removeEventListener('gw:runtime', onRuntimeChange)
+  }, [])
+
   const streamOpts = {
-    api_key: runtimeCfg.api_key,
+    api_key:  runtimeCfg.api_key,
     base_url: runtimeCfg.base_url,
-    model: runtimeCfg.model_label,
+    model:    runtimeCfg.model_label,
     branch_id: branchId,
   }
 
   const { panels: panelStates, togglePanel, closePanel, isPanelOpen } = usePanels()
+
+  // 方案 A：检测 sessionStorage 里的开局配置消息，自动发送
+  useEffect(() => {
+    if (floors.length > 0 || streaming) return
+    const key = `gw_setup_${sessionId}`
+    const msg = sessionStorage.getItem(key)
+    if (!msg) return
+    sessionStorage.removeItem(key)
+    // 等 ChatInput 挂载并注册 gw:choose 监听后再触发（下一个 tick）
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('gw:choose', { detail: msg }))
+    }, 0)
+  }, [sessionId, floors.length, streaming])
   const streamingBuffer = streaming ? buffer : (pendingMessage ?? null)
   const openingAssistant = branchId === 'main' && floors.length === 0 ? (openingPreviewQ.data?.messages.find((m) => m.role === 'assistant')?.content ?? '') : ''
   const uiFloors: Floor[] =
@@ -200,7 +219,6 @@ function TextPlayPageReal({ sessionId, onBack }: { sessionId: string; onBack: ()
     }
   }
   const lastTokenUsed = floors.length > 0 ? floors[floors.length - 1]?.token_used : undefined
-  const hasStatsBar = !!(uiCfg?.stats_bar?.items && uiCfg.stats_bar.items.length > 0)
 
   if (sessionQ.isLoading) {
     return (
@@ -244,7 +262,6 @@ function TextPlayPageReal({ sessionId, onBack }: { sessionId: string; onBack: ()
         sessionId={sessionId}
         gameId={session?.game_id ?? ''}
         onBack={onBack}
-        statsAvailable={hasStatsBar}
         floatingPanels={uiCfg?.floating_panels?.panels ?? []}
         onTogglePanel={togglePanel}
         isPanelOpen={isPanelOpen}
@@ -265,7 +282,6 @@ function TextPlayPageReal({ sessionId, onBack }: { sessionId: string; onBack: ()
             messageStyle={messageStyle}
             characters={uiCfg?.characters ?? undefined}
             avatarMode={uiCfg?.avatar_mode ?? 'none'}
-            choiceColumns={uiCfg?.choice_columns}
             optimisticUserMessage={pendingUserInput}
             streamingBuffer={streamingBuffer}
             lastOptions={streaming ? [] : lastOptions}
@@ -290,6 +306,7 @@ function TextPlayPageReal({ sessionId, onBack }: { sessionId: string; onBack: ()
           sessionId={sessionId}
           panelStates={panelStates}
           onClosePanel={closePanel}
+          streamDone={!streaming}
         />
       </div>
 
@@ -405,7 +422,6 @@ function TextPlayPageMock({ sessionId, onBack }: { sessionId: string; onBack: ()
   }, [uiCfg])
 
   const floors = buildMockFloors(sessionId)
-  const hasStatsBar = !!(uiCfg?.stats_bar?.items && uiCfg.stats_bar.items.length > 0)
   const lastTokenUsed = floors.length > 0 ? floors[floors.length - 1]?.token_used : undefined
 
   return (
@@ -417,7 +433,6 @@ function TextPlayPageMock({ sessionId, onBack }: { sessionId: string; onBack: ()
         sessionId={sessionId}
         gameId=""
         onBack={onBack}
-        statsAvailable={hasStatsBar}
         floatingPanels={uiCfg?.floating_panels?.panels ?? []}
         onTogglePanel={togglePanel}
         isPanelOpen={isPanelOpen}

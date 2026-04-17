@@ -55,7 +55,7 @@ export default function ChatInput({ sessionId, inputMode = 'free', placeholder =
     streamTurn(
       sessionId, content,
       appendDelta,
-      (turn) => { endStream(); onTurnDone(turn) },
+      (turn) => { onTurnDone(turn); endStream() },
       (err) => setError(err.message),
       ctrl.signal,
       streamOpts,

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Archive, ArrowLeft, Bug, MoreHorizontal } from 'lucide-react'
 import { Drawer } from 'vaul'
 import { useQueryClient } from '@tanstack/react-query'
-import { getRuntimeConfig, setRuntimeConfig, type RuntimeConfig } from '@/stores/runtime'
+import { getRuntimeConfig } from '@/stores/runtime'
 import PanelSwitcherMenu from './PanelSwitcherMenu'
 import type { FloatingPanelDecl } from '@/api/types'
 import { useWorldbook } from '@/queries/games'
@@ -18,7 +18,6 @@ interface Props {
   sessionId: string
   gameId: string
   onBack: () => void
-  statsAvailable?: boolean
   floatingPanels?: FloatingPanelDecl[]
   onTogglePanel: (id: string) => void
   isPanelOpen: (id: string) => boolean
@@ -33,7 +32,6 @@ export default function TextPlayTopBar({
   sessionId,
   gameId,
   onBack,
-  statsAvailable = true,
   floatingPanels = [],
   onTogglePanel,
   isPanelOpen,
@@ -46,9 +44,7 @@ export default function TextPlayTopBar({
   const [titleVisible, setTitleVisible] = useState(true)
   const [worldbookOpen, setWorldbookOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
-  const [modelOpen, setModelOpen] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
-  const [cfg, setCfg] = useState<RuntimeConfig>(getRuntimeConfig)
   const [wbQuery, setWbQuery] = useState('')
   const [wbSort, setWbSort] = useState<'category' | 'key'>('category')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -59,7 +55,8 @@ export default function TextPlayTopBar({
   const [newContent, setNewContent] = useState('')
   const nav = useNavigate()
   const qc = useQueryClient()
-  const { model_label } = getRuntimeConfig()
+  const runtimeCfg = getRuntimeConfig()
+  const { model_label } = runtimeCfg
 
   const worldbookQ = useWorldbook(gameId, worldbookOpen && !!gameId && sessionId !== 'test')
   const promptPreviewQ = usePromptPreview(sessionId, debugOpen && sessionId !== 'test')
@@ -97,9 +94,9 @@ export default function TextPlayTopBar({
     return groups
   }, [worldbookEntries, wbSort])
 
-  function handleSave() {
-    setRuntimeConfig(cfg)
-    setModelOpen(false)
+  function openSettings() {
+    setMoreOpen(false)
+    window.dispatchEvent(new CustomEvent('gw:settings'))
   }
 
   return (
@@ -139,7 +136,6 @@ export default function TextPlayTopBar({
         </button>
 
         <PanelSwitcherMenu
-          statsAvailable={statsAvailable}
           floatingPanels={floatingPanels}
           onTogglePanel={onTogglePanel}
           isPanelOpen={isPanelOpen}
@@ -149,6 +145,8 @@ export default function TextPlayTopBar({
             setPanelsOpen(o)
           }}
         />
+
+        {/* topbar 面板图标按钮已移入 PanelSwitcherMenu 下拉菜单，此处不再渲染独立按钮 */}
 
         <button
           type="button"
@@ -213,10 +211,7 @@ export default function TextPlayTopBar({
             <div className="absolute top-full right-0 mt-1 w-44 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl z-[70] py-1">
               <button
                 className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--color-accent)]/10 transition-colors"
-                onClick={() => {
-                  setModelOpen(true)
-                  setMoreOpen(false)
-                }}
+                onClick={openSettings}
               >
                 <span className="text-[var(--color-text-muted)] text-xs block">当前模型</span>
                 <span className="truncate" style={{ color: 'var(--color-text)' }}>{model_label || '云端默认'}</span>
@@ -569,70 +564,6 @@ export default function TextPlayTopBar({
                     暂无数据
                   </div>
                 )}
-              </div>
-            </Drawer.Content>
-          </Drawer.Portal>
-        </Drawer.Root>
-
-        <Drawer.Root open={modelOpen} onOpenChange={setModelOpen} direction="right">
-          <Drawer.Portal>
-            <Drawer.Overlay className="fixed inset-x-0 top-12 bottom-0 bg-black/40 z-40" />
-            <Drawer.Content
-              className="fixed right-0 top-12 bottom-0 w-80 z-50 flex flex-col border-l border-[var(--color-border)]"
-              style={{ backgroundColor: 'var(--color-bg)' }}
-            >
-              <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
-                <Drawer.Title className="font-semibold text-sm">当前模型</Drawer.Title>
-              </div>
-              <div className="p-4 flex flex-col gap-4 flex-1 overflow-y-auto gw-chat-scroll">
-                <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>API Base URL</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 text-sm rounded-lg border outline-none transition-colors"
-                    style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
-                    placeholder="https://api.openai.com/v1"
-                    value={cfg.base_url ?? ''}
-                    onChange={e => setCfg(c => ({ ...c, base_url: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>API Key</label>
-                  <input
-                    type="password"
-                    className="w-full px-3 py-2 text-sm rounded-lg border outline-none transition-colors"
-                    style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
-                    placeholder="sk-..."
-                    value={cfg.api_key ?? ''}
-                    onChange={e => setCfg(c => ({ ...c, api_key: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>模型标识 (Model)</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 text-sm rounded-lg border outline-none transition-colors"
-                    style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
-                    placeholder="glm-4-plus"
-                    value={cfg.model_label ?? ''}
-                    onChange={e => setCfg(c => ({ ...c, model_label: e.target.value }))}
-                  />
-                </div>
-                <div className="mt-2 flex gap-3">
-                  <button
-                    className="flex-1 py-2 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] text-sm transition-colors hover:border-[var(--color-text-muted)]"
-                    style={{ color: 'var(--color-text)' }}
-                    onClick={() => setModelOpen(false)}
-                  >
-                    取消
-                  </button>
-                  <button
-                    className="flex-1 py-2 rounded-lg bg-[var(--color-accent)] text-white text-sm transition-opacity hover:opacity-90"
-                    onClick={handleSave}
-                  >
-                    保存
-                  </button>
-                </div>
               </div>
             </Drawer.Content>
           </Drawer.Portal>

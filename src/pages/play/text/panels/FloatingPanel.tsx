@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect } from 'react'
 import { X } from 'lucide-react'
+import { useDraggable } from './hooks/useDraggable'
 
 export interface FloatingPanelProps {
   id: string
@@ -9,11 +10,23 @@ export interface FloatingPanelProps {
   children: React.ReactNode
   style?: React.CSSProperties
   className?: string
-  titleHidden?: boolean
-  closeOnOutsideClick?: boolean
-  headerHidden?: boolean
-  closeOnPanelClick?: boolean
+  /**
+   * 面板行为预设：
+   * - `peek`：无 header，点击面板背景关闭（不响应子元素冒泡）
+   * - `tool`：有 header + 关闭按钮，点击面板外关闭
+   * - `pinned`：有 header + 关闭按钮，只能点 × 关闭
+   * 未指定时从旧版散装 props 推导（向后兼容）。
+   */
+  behavior?: 'peek' | 'tool' | 'pinned'
   draggable?: boolean
+  /** @deprecated 使用 behavior 替代 */
+  titleHidden?: boolean
+  /** @deprecated 使用 behavior 替代 */
+  closeOnOutsideClick?: boolean
+  /** @deprecated 使用 behavior 替代 */
+  headerHidden?: boolean
+  /** @deprecated 使用 behavior 替代 */
+  closeOnPanelClick?: boolean
 }
 
 export function FloatingPanel({
@@ -24,55 +37,46 @@ export function FloatingPanel({
   children,
   style,
   className = '',
+  behavior,
+  draggable = true,
   titleHidden,
-  closeOnOutsideClick = true,
+  closeOnOutsideClick,
   headerHidden,
   closeOnPanelClick,
-  draggable = true,
 }: FloatingPanelProps) {
-  const ref = useRef<HTMLDivElement>(null)
-  const dragRef = useRef<{ startX: number; startY: number; startDx: number; startDy: number } | null>(null)
-  const storageKey = useMemo(() => `gw_panel_pos_${id}`, [id])
-  const [offset, setOffset] = useState<{ dx: number; dy: number }>(() => {
-    try {
-      const raw = localStorage.getItem(storageKey)
-      if (!raw) return { dx: 0, dy: 0 }
-      const v = JSON.parse(raw) as any
-      if (typeof v?.dx === 'number' && typeof v?.dy === 'number') return { dx: v.dx, dy: v.dy }
-      return { dx: 0, dy: 0 }
-    } catch {
-      return { dx: 0, dy: 0 }
-    }
-  })
+  const resolvedBehavior: 'peek' | 'tool' | 'pinned' = behavior ?? (
+    closeOnPanelClick ? 'peek' :
+    (closeOnOutsideClick ?? true) ? 'tool' :
+    'pinned'
+  )
 
-  // 外部点击关闭
+  const showHeader = resolvedBehavior !== 'peek' && !headerHidden
+  const bgClickCloses = resolvedBehavior === 'peek'
+  const outsideClickCloses = resolvedBehavior === 'tool'
+  const canDrag = draggable && showHeader
+
+  const { ref, offset, dragHandleProps } = useDraggable({ id, enabled: canDrag })
+
+  // 外部点击关闭（tool 行为）
   useEffect(() => {
-    if (!closeOnOutsideClick) return
+    if (!outsideClickCloses) return
     function onDocClick(e: MouseEvent) {
       const target = e.target as HTMLElement
       if (target?.closest('[data-overlay-exempt="true"]')) return
-      if (!ref.current?.contains(target as Node)) onClose()
+      if (!ref.current?.contains(target)) onClose()
     }
     document.addEventListener('mousedown', onDocClick)
     return () => document.removeEventListener('mousedown', onDocClick)
-  }, [onClose, closeOnOutsideClick])
+  }, [onClose, outsideClickCloses, ref])
 
   // ESC 关闭
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        onClose()
-      }
+      if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(offset))
-    } catch {}
-  }, [storageKey, offset])
 
   return (
     <div
@@ -82,42 +86,28 @@ export function FloatingPanel({
       style={{
         ...style,
         transform: `translate3d(${offset.dx}px, ${offset.dy}px, 0)`,
-        touchAction: draggable ? 'none' : undefined,
+        touchAction: canDrag ? 'none' : undefined,
       }}
       role="dialog"
       aria-label={title}
-      onClick={() => {
-        if (closeOnPanelClick) onClose()
+      onClick={(e) => {
+        if (bgClickCloses && e.target === e.currentTarget) onClose()
       }}
     >
-      {!headerHidden && (
+      {showHeader && (
         <div
           className="flex items-center justify-between px-3 py-2 border-b shrink-0 bg-[var(--color-surface)]"
-          style={{ borderColor: 'var(--color-border)' }}
-          onPointerDown={(e) => {
-            if (!draggable || closeOnPanelClick) return
-            if (e.button !== 0) return
-            const el = e.currentTarget
-            el.setPointerCapture(e.pointerId)
-            dragRef.current = { startX: e.clientX, startY: e.clientY, startDx: offset.dx, startDy: offset.dy }
-          }}
-          onPointerMove={(e) => {
-            const st = dragRef.current
-            if (!draggable || closeOnPanelClick || !st) return
-            setOffset({ dx: st.startDx + (e.clientX - st.startX), dy: st.startDy + (e.clientY - st.startY) })
-          }}
-          onPointerUp={(e) => {
-            if (!draggable || closeOnPanelClick) return
-            try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {}
-            dragRef.current = null
-          }}
+          style={{ borderColor: 'var(--color-border)', ...dragHandleProps.style }}
+          onPointerDown={dragHandleProps.onPointerDown}
+          onPointerMove={dragHandleProps.onPointerMove}
+          onPointerUp={dragHandleProps.onPointerUp}
         >
           <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
             {icon && <span className="flex items-center justify-center w-4 h-4">{icon}</span>}
             {!titleHidden && <span>{title}</span>}
           </div>
           <button
-            onClick={onClose}
+            onClick={(e) => { e.stopPropagation(); onClose() }}
             className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg)] transition-colors"
             aria-label="关闭"
           >
@@ -126,7 +116,6 @@ export function FloatingPanel({
         </div>
       )}
 
-      {/* Body */}
       <div className="flex-1 overflow-y-auto min-h-0 bg-[var(--color-surface)] p-3">
         {children}
       </div>

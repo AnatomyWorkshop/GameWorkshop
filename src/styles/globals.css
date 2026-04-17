@@ -193,7 +193,7 @@ body {
   --color-quote-border: #374151;
 }
 
-/* ── A 阶段：官方内联样式类 ── */
+/* ── A 阶段：官方内联样式类（alice:core，所有游戏默认启用）── */
 .gw-em-gold {
   color: var(--color-em-gold);
   font-weight: 600;
@@ -224,6 +224,50 @@ body {
   color: var(--color-text-muted);
   font-style: italic;
 }
+
+/* ── 扩展标签样式（alice:extended，游戏按需引用）── */
+/* 游戏在 ui_config.regex_profiles 里声明 { ref: "alice:extended" } 即可启用对应标签。  */
+/* 新增官方扩展标签时，在此区块添加对应 CSS 类，并在 regexPipeline.ts 的                */
+/* ALICE_EXTENDED_RULES 里添加对应规则（order 20-39）。                                  */
+
+/* 数值提升（适用于 RPG/体育/养成等有属性变化的游戏） */
+.gw-em-stat-up {
+  color: #4ade80;
+  font-weight: 600;
+}
+
+/* 数值下降 */
+.gw-em-stat-down {
+  color: #f87171;
+  font-weight: 600;
+}
+
+/* 结果卡片（赛事/战斗/考试等结果，左侧 accent 边框，monospace） */
+.gw-result-card {
+  display: block;
+  margin: 0.75rem 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  font-family: monospace;
+  font-size: 0.9rem;
+  border-radius: 0 6px 6px 0;
+  white-space: pre-wrap;
+}
+
+/* 媒体/报纸引用块（新闻报道、NPC 评论、社交动态等） */
+.gw-media-quote {
+  display: block;
+  margin: 0.5rem 0 0.75rem;
+  padding: 6px 12px;
+  border-left: 3px solid var(--color-border);
+  font-style: italic;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  border-radius: 0 4px 4px 0;
+}
+
+/* order 24-39 对应的 CSS 类在此继续添加 */
 
 /* ── 工具类 ── */
 .scrollbar-none {
