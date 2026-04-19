@@ -153,15 +153,10 @@ function SayLine({ name, subtitle, text, avatarUrl, color }: { name: string; sub
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2 mb-1">
+        <div className="mb-1">
           <span className="text-xs font-semibold truncate" style={{ color: color ?? 'var(--color-text)' }}>
             {name}
           </span>
-          {subtitle && (
-            <span className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>
-              {subtitle}
-            </span>
-          )}
         </div>
         <div
           className="px-3 py-2 rounded-xl text-[15px] font-medium leading-[var(--prose-line-height)] border"
@@ -169,6 +164,11 @@ function SayLine({ name, subtitle, text, avatarUrl, color }: { name: string; sub
         >
           {renderQuoted(text)}
         </div>
+        {subtitle && (
+          <div className="mt-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+            {subtitle}
+          </div>
+        )}
       </div>
     </div>
   )
